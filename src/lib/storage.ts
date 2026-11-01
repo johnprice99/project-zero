@@ -1,6 +1,5 @@
-import { decodeAnyBoard, encodeBoard } from './codec.ts';
+import { BoardFormatError, decodeAnyBoard, decodeBoard, encodeBoard } from './codec.ts';
 import type { Board } from './model.ts';
-import { importPrototypeBoard } from './prototype.ts';
 
 // Where the board is kept. The desktop app saves to a file through Rust; the browser
 // preview uses localStorage. Both store a JSON board document with a revision number.
@@ -45,13 +44,26 @@ export function createBoardStore(backend: StorageBackend) {
   let queue: Job[] = [];
   let idle: Promise<void> = Promise.resolve();
   let draining = false;
+  let loading = false;
+
+  // Never write a board that would fail to load next time.
+  function encodeChecked(board: Board): string {
+    const contents = JSON.stringify(encodeBoard(board));
+    try {
+      decodeBoard(JSON.parse(contents));
+    } catch (error) {
+      const problem = error instanceof BoardFormatError ? ` (${error.message})` : '';
+      throw new Error(`This change would leave the board unreadable, so it was not saved${problem}.`);
+    }
+    return contents;
+  }
 
   async function drain(): Promise<void> {
     draining = true;
     while (queue.length) {
       const job = queue.shift()!;
       try {
-        const contents = JSON.stringify(encodeBoard(job.board));
+        const contents = encodeChecked(job.board);
         revision = job.kind === 'replace' ? await backend.replace(contents) : await backend.save(revision!, contents);
         saved = job.board;
         for (const waiter of job.waiters) waiter.resolve();
@@ -64,6 +76,7 @@ export function createBoardStore(backend: StorageBackend) {
     draining = false;
   }
   function schedule(kind: Job['kind'], board: Board): Promise<void> {
+    if (loading) return Promise.reject(new Error('The saved board is being reloaded. Try again.'));
     return new Promise((resolve, reject) => {
       const last = queue.at(-1);
       if (kind === 'save' && last?.kind === 'save') {
@@ -76,19 +89,25 @@ export function createBoardStore(backend: StorageBackend) {
 
   return {
     async load(): Promise<{ board: Board | null; source: LoadSource }> {
-      await idle;
-      revision = null;
-      saved = null;
-      const file = await backend.load();
-      if (file) {
-        const { board, upgraded } = decodeAnyBoard(JSON.parse(file.contents));
-        [revision, saved] = [file.revision, board];
-        return { board, source: upgraded ? 'upgraded' : 'saved' };
+      // New saves are refused until the load finishes, and saves already queued finish first.
+      loading = true;
+      try {
+        while (draining) await idle;
+        revision = null;
+        saved = null;
+        const file = await backend.load();
+        if (file) {
+          const { board, upgraded } = decodeAnyBoard(JSON.parse(file.contents));
+          [revision, saved] = [file.revision, board];
+          return { board, source: upgraded ? 'upgraded' : 'saved' };
+        }
+        const prototype = backend.prototypeBoard();
+        const board = prototype === null ? null : decodeAnyBoard(JSON.parse(prototype)).board;
+        revision = 0;
+        return { board, source: board ? 'imported' : 'empty' };
+      } finally {
+        loading = false;
       }
-      const prototype = backend.prototypeBoard();
-      const board = prototype === null ? null : importPrototypeBoard(JSON.parse(prototype));
-      revision = 0;
-      return { board, source: board ? 'imported' : 'empty' };
     },
     save(board: Board): Promise<void> {
       if (revision === null) return Promise.reject(new Error('The saved board has not been loaded.'));

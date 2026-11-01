@@ -142,3 +142,29 @@ test('a browser prototype board is imported once and left in place', async () =>
   assert.equal(JSON.parse(storage.values.get(key)!).board.schema, 1);
   assert.equal((await store.load()).source, 'saved');
 });
+
+test('a board that would not load again is never written', async () => {
+  const storage = memoryStorage();
+  const store = createBoardStore(createBrowserBackend(storage));
+  await store.load();
+  await store.save(sampleBoard());
+  const broken = { ...sampleBoard(), tasks: [...sampleBoard().tasks, sampleBoard().tasks[0]] };
+  await assert.rejects(store.save(broken), /would leave the board unreadable.*duplicate id/);
+  assert.deepEqual((await createBoardStore(createBrowserBackend(storage)).load()).board, sampleBoard());
+});
+
+test('reloading waits for the save in progress and refuses new saves until it finishes', async () => {
+  const { backend, saves } = controlledBackend();
+  const store = createBoardStore(backend);
+  await store.load();
+  const inProgress = store.save(titled('In progress'));
+  await settle();
+  let reloaded = false;
+  const reload = store.load().then(() => (reloaded = true));
+  await assert.rejects(store.save(titled('During reload')), /being reloaded/);
+  await settle();
+  assert.equal(reloaded, false, 'the reload waits for the save');
+  saves[0].finish();
+  await Promise.all([inProgress, reload]);
+  assert.equal(saves.length, 1);
+});

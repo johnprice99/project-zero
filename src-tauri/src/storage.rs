@@ -51,6 +51,12 @@ impl StorageError {
             message: format!("{action}: {error}"),
         }
     }
+    fn io_message(message: String) -> Self {
+        Self {
+            kind: ErrorKind::Io,
+            message,
+        }
+    }
     fn conflict() -> Self {
         Self {
             kind: ErrorKind::Conflict,
@@ -290,7 +296,14 @@ impl Storage {
         while dir.join(format!("board-{time}-{reason}.json")).exists() {
             time += 1;
         }
-        write_atomic(&dir.join(format!("board-{time}-{reason}.json")), &contents)?;
+        write_atomic(&dir.join(format!("board-{time}-{reason}.json")), &contents).map_err(
+            |error| {
+                StorageError::io_message(format!(
+                    "A backup could not be made, so nothing was saved. {}",
+                    error.message
+                ))
+            },
+        )?;
         self.prune_backups(now);
         Ok(())
     }

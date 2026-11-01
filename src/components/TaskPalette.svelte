@@ -65,7 +65,8 @@
   <input bind:this={input} role="combobox" aria-label={prompt ? prompt.placeholder : 'Search commands'} aria-expanded={!prompt} aria-autocomplete="list" aria-controls="command-results" aria-activedescendant={shown.length ? `command-result-${active}` : undefined}
     placeholder={prompt?.placeholder ?? nested?.placeholder ?? 'Type a command…'} spellcheck="false" autocomplete="off" bind:value={query} oninput={() => { cursor = 0; error = ''; }} onkeydown={key} onblur={blur}/>
   {#if prompt}
-    {#if error}<p class="command-message" role="alert">{error}</p>{/if}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    {#if error}<p class="command-message" role="alert" onmousedown={(e) => e.preventDefault()}>{error}</p>{/if}
   {:else}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="command-results" id="command-results" role="listbox" tabindex="-1" aria-label="Commands" bind:this={list} onmousedown={(e) => e.preventDefault()}>

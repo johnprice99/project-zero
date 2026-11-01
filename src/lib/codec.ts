@@ -159,7 +159,8 @@ export function decodeBoard(value: unknown): Board {
 // (which wraps the document with a revision), or a prototype export.
 export function decodeAnyBoard(value: unknown): { board: Board; upgraded: boolean } {
   const doc = isRecord(value) && isRecord(value.board) && 'revision' in value ? value.board : value;
-  if (isPrototypeBoard(doc)) return { board: importPrototypeBoard(doc), upgraded: true };
+  // Prototype imports are checked against the current format too.
+  if (isPrototypeBoard(doc)) return { board: validate({ ...encodeBoard(importPrototypeBoard(doc)) }), upgraded: true };
   const schema = isRecord(doc) ? doc.schema : undefined;
   return { board: decodeBoard(doc), upgraded: schema !== SCHEMA };
 }

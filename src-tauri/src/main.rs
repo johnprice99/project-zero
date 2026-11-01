@@ -121,13 +121,17 @@ async fn import_board(app: AppHandle) -> Result<Option<String>, StorageError> {
 }
 
 fn main() {
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
-        }))
+    let builder = tauri::Builder::default();
+    // Only one copy may write the board. Development builds keep their own data folder and
+    // skip this, so `tauri dev` can run while the installed app is open.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }));
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .manage(ExitGate::default())
         .invoke_handler(tauri::generate_handler![

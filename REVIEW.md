@@ -37,3 +37,61 @@ Scope: application state, task operations and ordering, saved-data validation/mi
 ## Remaining boundary
 
 The main unfinished engineering work is the previously agreed SQLite persistence layer and local backups. The app still uses browser/webview localStorage. It is not a durable database, browser and desktop drafts are separate, and this review does not change that limitation. Native GUI/shortcut operation and native JSON-download behaviour still need interactive verification; building and static checks do not verify those behaviours.
+
+# Architecture review — 1 November 2026
+
+Scope: readiness for the Tauri desktop app, focused on what could cause problems later. Findings and what was done:
+
+## Changed
+
+| Priority | Finding | Change |
+| --- | --- | --- |
+| Critical | Saving was synchronous and every dialog expected an immediate result. Tauri calls are asynchronous, and building each change from a possibly out-of-date board would lose rapid changes. | `commit(change)` applies changes to the latest board and saves through an ordered queue (`src/lib/storage.ts`). Changes made during a save are combined; a failed save abandons the changes queued behind it and returns the board to its last saved state. Dialogs await the result and ignore repeated clicks. |
+| Critical | The plan said SQLite, but the app works on whole boards. | Replaced with a single JSON board file written by Rust (see README, Technology decision). |
+| Critical | No version control. | Git repository initialised; design snapshots removed. |
+| High | The app identifier fixes where data lives. | Set to `com.johnprice.projectzero` before real use. Development builds use a separate data folder. |
+| High | Durable storage, backups, export, and restore were missing. | `src-tauri/src/storage.rs`: atomic writes, revision checks, backups (first change of a session, every 30 minutes, before restore; pruned to 20 recent plus one per day for 60 days), restore, and export/import through native dialogs. The webview has no file-system access. |
+| High | Two copies of the app could write the same data; conflicts had no recovery. | Single-instance plugin. A refused save reloads the latest board and explains what happened. |
+| High | Quitting during a save could lose it. | Quit and Close Window wait for pending saves (three-second limit). |
+| Medium | One function handled six prototype formats; error messages were vague. | New `schema: 1` format with errors naming the record and field (`tasks[3].title …`), refusal of newer formats, and a migration hook. The prototype decoder is frozen as an importer (`src/lib/prototype.ts`). |
+| Medium | Dialog state was seven flags kept consistent by hand. | One `panel` value plus the confirmation layer. |
+| Medium | Length limits and core column ids were repeated across files. | `limits` and `coreColumnIds` in `src/lib/model.ts`. |
+| Low | Long unformatted lines; mixed Svelte syntax. | Prettier for TypeScript (Svelte templates formatted by hand to avoid spacing changes); `Icon.svelte` uses runes. |
+| Low | Mac menu gaps. | About, custom Quit (saves first), and a Window menu. |
+
+The command palette was also rebuilt to work and look like Typr's (owner's request): one list at a time, fuzzy matching, recent commands first, a tick on the current appearance, Escape or clicking outside closes, and a one-line prompt for column names in place of the column-name dialog.
+
+## Independent review of these changes
+
+A second review of the diff found no corruption paths, and confirmed atomic writes, revision handling, backup-id safety, and the save queue. It found these issues, now fixed:
+
+- A change made while a restore was saving could be written over the restored board. Restores now show immediately, so later changes build on them.
+- After a failed save before the board had loaded, or during a reload, the failed change could stay on screen. The app now starts only once the board has loaded, and changes are refused during a reload. A conflict triggers one reload rather than one per queued save.
+- A reload could run alongside a save. Loading now waits for saves in progress and refuses new ones until it finishes.
+- A failed delete closed the task editor and lost its draft. Deletions now apply only once saved.
+- The board appeared empty for a moment on launch. It is now loaded before the window content is shown.
+- Export could miss a change still being saved. It now waits.
+- Nothing stopped a model bug from saving a board that would not load. Every save, and every prototype import, is now checked against the format first.
+- `tauri dev` exited at once while the installed app was open (shared single-instance lock). Single instance now applies only to release builds.
+- A failed backup was reported as a failed save. It now says that a backup could not be made, so nothing was saved.
+- Clicking the error text in the column-name prompt closed it. A leftover error banner could replace the duplicate-name message.
+
+Accepted as they are:
+
+- Quitting from the Dock, logging out, or shutting down skips the save wait (documented).
+- A final save that fails while quitting is not reported. The file stays intact and the earlier error was already shown.
+- Tasks entered in a desktop build made before the identifier change must be exported from that build and restored.
+
+## Not changed
+
+- Completed tasks still accumulate until cleared. An archive is a product decision.
+- Collapsed projects stay in the board (saved, exported, and restored with it); device preferences stay in webview storage.
+- No code signing, notarisation, or DMG target; not needed for personal use.
+- The native menu gains About and a Window menu, and Quit is now a custom item so it can wait for saves. The blocked-storage message now says “saved board” instead of “saved draft”.
+- The board footer still reads “Prototype · saved on this device”, left as-is to keep the UI unchanged.
+
+## Validation
+
+- Unit tests: TypeScript (task rules, board format and prototype imports, save queue ordering/combining/failure/conflict, palette matching) and Rust (save/reload, revision conflicts, unreadable boards, backups, pruning, backup-id path safety, export validation).
+- `npm run check` (Svelte/TypeScript, Prettier, unit tests), `cargo clippy -D warnings`, and a release bundle build.
+- Outside the palette, the rendered markup and CSS are unchanged. Edits there are limited to script blocks, event-handler expressions, and `maxlength` values now read from `limits` (same numbers).

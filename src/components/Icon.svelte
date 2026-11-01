@@ -1,6 +1,5 @@
 <script lang="ts">
-  export let name = 'plus';
-  export let size = 18;
+  let { name = 'plus', size = 18 }: { name?: string; size?: number } = $props();
   const paths: Record<string, string> = {
     edit: 'm16 3 5 5-12 12-6 1 1-6L16 3ZM14 5l5 5',
     trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',

@@ -18,10 +18,10 @@ Accepted on 31 October 2026:
 - **Tauri** for the desktop application.
 - **Svelte + TypeScript** for the interface.
 - **Vite** for frontend development and builds; no SvelteKit required.
-- **SQLite** for persistent local storage.
+- **A single JSON board file**, written by a small Rust module, for persistent local storage (revised on 1 November 2026; SQLite was the original choice).
 - Scoped component CSS, system fonts, and a small set of dependencies.
 
-This balances a small installed application with code the owner can understand and maintain using familiar web technologies. Keep task and ordering rules in TypeScript modules, with desktop integration and storage behind a small, documented interface. Keep custom Rust code contained.
+This balances a small installed application with code the owner can understand and maintain using familiar web technologies. The board is small and held in memory, and every change produces a complete board, so a safely written file meets every persistence requirement without a database. SQLite remains an option if history, search across years of work, or sync are ever needed; storage sits behind one interface, so switching would not affect the rest of the app. Keep task and ordering rules in TypeScript modules, with desktop integration and storage behind a small, documented interface. Keep custom Rust code contained.
 
 The finished app must run without Xcode, Node.js, Rust, a development server, an account, or an internet connection. Building the Mac app requires Node.js, Rust, and Apple's Xcode Command Line Tools; the full Xcode application is not required for the desktop target.
 
@@ -30,7 +30,7 @@ Measure installed release size and installer size separately. No size target has
 ## Agreed workflow
 
 - One board with projects as horizontal swimlanes.
-- Default columns: To do, Doing, Done. Rename columns or add another in Settings. A rename commits on Enter or when leaving the field, rather than on each keystroke. Columns are shared across projects and Today; new columns appear before completed work. The Done column keeps its completion behaviour when renamed.
+- Default columns: To do, Doing, Done. Rename columns or add another in Settings or the command palette. A rename commits on Enter or when leaving the field, rather than on each keystroke. Columns are shared across projects and Today; new columns appear before completed work. The Done column keeps its completion behaviour when renamed.
 - Move cards between columns by dragging or through the command palette; cards have no completion checkbox. Keyboard commands also change task order within All work or Today.
 - Blocking is an independent flag on a task. It does not change the task’s column, priority, or Today membership. Completion clears the flag. There is only one description field; no separate blocker-reason field.
 - Open one project at a time from the sidebar; All work returns to every project. Project selection is navigation, not a multi-select toggle. Today shows the daily selection across all projects.
@@ -57,22 +57,22 @@ Measure installed release size and installer size separately. No size target has
 
 - Store data locally, separately from the installed app, in a stable application data directory.
 - Persist confirmed changes during use, including task order and Today selections; task-editor drafts are saved with Save. Never rely on normal shutdown to save.
-- Use transactions for related writes.
-- Show save failures clearly and preserve existing data; never silently replace an unreadable database with an empty board.
-- Include rotating local backups, backup before database migrations, export, and restore in the first version.
+- Write every change atomically, so a crash leaves either the previous or the new board, never a mix.
+- Show save failures clearly and preserve existing data; never silently replace an unreadable board with an empty board.
+- Include rotating local backups, backup before format upgrades, export, and restore in the first version.
 - Verify persistence across restarts and recovery from backups before relying on the app for real work.
 
-Local backups support recovery but cannot protect against loss or failure of the entire Mac without an additional copy elsewhere.
+Local backups support recovery but cannot protect against loss or failure of the entire Mac without an additional copy elsewhere. Keep the data folder out of iCloud Drive or Dropbox; put exports there instead.
 
 ## Scope
 
-The interactive Svelte prototype and Tauri Mac shell are implemented. The browser interactions are verified, the Rust shell passes cargo check, and a release Mac application bundle builds successfully (approximately 4 MB at this stage). The native UI shortcut check could not be performed because computer-control permission was unavailable.
+The board, its Tauri Mac app, and durable file storage with backups, export, and restore are implemented. Unit tests cover the task rules, the board format, the save queue, and the Rust storage. Interactive checks in the desktop app (shortcuts, saving before quit, export/restore dialogs, persistence across restarts) are done by hand; see the 1 November entry in `REVIEW.md`.
 
 The initial design was simplified following owner feedback: keep the screen close to a paper list, remove decorative copy, badges and counts, minimise repeated controls, and keep task controls straightforward. The board starts with three editable columns, with blocking represented on the card. Appearance lives in the Settings modal. Blocked cards use a muted red warning background, with a stronger border on hover. Task titles use 14px text, with a shared typography scale and more space inside and between cards. Narrow windows scroll horizontally to preserve readable card widths. Buttons have explicit borders and backgrounds, including Cancel and Delete. Cards separate their header, optional description, project label, and full-width Today action. Export is available through the command palette and save-error notice.
 
 Additional features should follow demonstrated workflow needs.
 
-## Running the prototype
+## Running the app
 
 Requires Node.js 22.18+ (or a newer supported version), plus npm.
 
@@ -81,20 +81,35 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:1420/. The development server listens only on this Mac. The app has no remote fonts, images, accounts, or runtime service dependencies.
+Open http://127.0.0.1:1420/ for the browser preview. The development server listens only on this Mac. The app has no remote fonts, images, accounts, or runtime service dependencies.
 
 ```sh
-npm run build  # Svelte/TypeScript checks and production frontend bundle
-npm test      # Shared-task and independent-ordering behaviour
+npm run check   # Svelte/TypeScript checks, Prettier, and unit tests
+npm run build   # check, then the production frontend bundle
+npm test        # unit tests only
+npm run format  # format TypeScript with Prettier (Svelte files are formatted by hand)
+cd src-tauri && cargo test   # storage, backup, and restore tests
 ```
 
-The Tauri shell is prepared for `npm run tauri dev` and `npm run tauri build`, which also require Rust and Xcode Command Line Tools. The release bundle is at `src-tauri/target/release/bundle/macos/Project Zero.app`. Native interactive verification and SQLite integration remain outstanding.
+`npm run tauri dev` runs the desktop app; `npm run tauri build` builds it. Both also require Rust and Xcode Command Line Tools. The release bundle is at `src-tauri/target/release/bundle/macos/Project Zero.app`.
 
-## Prototype storage boundary
+Tests are unit tests for the parts where a bug could lose work: task and ordering rules, the board format and imports, the save queue, and the Rust storage. There are no browser or end-to-end tests.
 
-This preview uses versioned browser local storage through `src/lib/storage.ts`, including task edits, ordering, and Today selections. Version 6 removes deleted-task storage and recovery. Older deleted-task lists are dropped during migration; active tasks and collapse preferences are preserved. Version 5 removed the separate blocker-reason field and preserved its contents once in the description. Version 4 added the completed-column designation and saved collapsed projects. Version 3 added column definitions; version 2 introduced the independent blocker flag. Older drafts are validated and migrated; their original storage keys are retained. Former Blocked cards move into Doing with the flag set, while their general notes remain unchanged. The description is the sole place for task details and blocker explanations. It is a disposable trial workspace, **not the final durable SQLite storage**. Browser and desktop-webview drafts are separate. Do not rely on it for irreplaceable work yet.
+## Storage
 
-An unreadable saved draft is left untouched, editing is paused, and sample tasks are not displayed in its place. Save failures show an error inside an open form and leave its draft available for retry; changes appear on the board only after a successful write. Writes detect a previously saved change from another window and refuse to silently overwrite it. This is a best-effort conflict check, not a database transaction or live synchronisation service. Export tasks in the command palette downloads the current saved board as JSON in the browser preview; it is not a routine sidebar action. Import/restore, database migrations, and rotating backups are not implemented yet.
+The desktop app keeps the board in `~/Library/Application Support/com.johnprice.projectzero/board.json`. Development builds (`npm run tauri dev`) use a separate `development` folder inside it, so they never touch the real board.
+
+- **Saving.** Every change is shown immediately and saved straight away, in order. Changes made while a save is running are combined into the next one. Rust writes a temporary file, flushes it to disk, and renames it over `board.json`. If a save fails, the board returns to its last saved state and the error is shown; open forms keep their draft for retry. Deletions take effect once saved. Every board is checked before it is written, so a bug cannot save a board that would fail to load.
+- **Revisions.** The file carries a revision number. A save based on an older revision is refused and the latest board is reloaded. Only one copy of the installed app can run at a time (development builds are exempt and use their own data folder).
+- **Quitting.** Quit (Cmd+Q) and closing the window wait for pending saves to finish (up to three seconds). Quitting from the Dock, logging out, or shutting down does not wait; saves start immediately and take milliseconds, so at most a change made in that instant is lost, and the file is never left half-written.
+- **Backups.** The previous board is copied to `backups/` before the first change after opening the app, then at most every 30 minutes, and before any restore. The newest 20 are kept, plus one per day for 60 days.
+- **Unreadable boards.** If the board cannot be read, nothing is overwritten and editing is paused. Restore from backup or Restore from exported file in the command palette replaces it; the unreadable file is kept as a backup first.
+- **Export and restore.** Export tasks waits for pending saves, then saves a readable JSON copy where you choose. Restore accepts an export, a backup, or a board saved by the browser prototype. It asks for confirmation and backs up the current board first.
+- **Format.** The board document has a `schema` number (currently 1), checked by `src/lib/codec.ts`. A board from a newer version of the app is refused rather than misread. Future format changes add a migration step there; the previous file is backed up before the upgraded board is first saved.
+
+The browser preview keeps its board in localStorage instead, with the same revision check between tabs. It has no backups and is not durable. The app identifier changed from `local.projectzero.desktop` to `com.johnprice.projectzero` on 1 November 2026: tasks entered in a desktop build made before then are not imported automatically; export them from that build and use Restore from exported file. Boards saved by the browser prototype (formats 1–6) are imported automatically on first run in the same browser, and the prototype's copy is left untouched.
+
+Collapsed projects are part of the board, so they are backed up and restored with it. Theme, sidebar width, and recently used commands are device preferences kept in webview storage. They are not part of the board, exports, or backups.
 
 ## Changing the theme
 
@@ -107,36 +122,44 @@ An unreadable saved draft is left untouched, editing is paused, and sample tasks
 - `--todo`, `--doing`, `--done`: default status colours.
 - `--warning-surface`, `--warning-border`, `--warning-strong`, `--warning-ink`, `--on-warning`: blocked-card appearance.
 - `--iris`, `--sage`, `--sand`, `--slate`, `--rose`, `--coral`, `--sky`, `--teal`: project markers.
+- `--palette-shadow`: command palette shadow.
 - `--font-ui`, `--text-base`, `--text-sm`, `--text-xs`, `--text-card`: shared typography.
 - `--sidebar-width`, `--content-padding`, `--column-min-width`, `--card-padding`, `--column-gap`, `--card-gap`, `--radius-sm`: layout and breathing room.
 
 Settings contains appearance and column management. Open it from the command palette. Appearance supports Light, Dark, and System. System is the default and follows macOS changes while the app is open. `src/lib/theme.ts` remembers the preference and sets `data-appearance` on the document; the light and dark CSS sections define each palette. `src/styles.css` handles layout and components.
 
-## Keyboard shortcuts
+## Command palette and shortcuts
 
-- Cmd+Shift+P: open the command palette.
-- Type to filter commands; results also search nested task/project actions. For example, “move homepage done” can find a task's destination directly.
-- Up/Down: change the selected command. Enter: run it or open its choices.
-- Escape: go back one palette level, then close. Backspace in an empty command field also goes back.
-- The palette includes creation, navigation, task editing, status/project moves, task order, Today membership, blocking, project editing and deletion, collapsing projects, column management, appearance, Settings, export, and confirmed cleanup.
+The palette works like Typr's:
+
+- Cmd+Shift+P opens it. It lists only what you can do right now, with your most recently used commands first.
+- Type to filter. Matching is fuzzy: the letters must appear in order, and word starts and consecutive letters rank higher.
+- Up/Down or Ctrl+N/Ctrl+P change the selection. Enter runs it. Escape, clicking outside, or leaving the field closes the palette.
+- Commands ending in “…” open a second list, such as the tasks to move and then the destination column. Each list is searched on its own.
+- Appearance choices are listed as “Appearance: Light/Dark/System”, with a tick on the current one.
+- Add column and Rename column turn the palette into a one-line name prompt. Enter saves; an invalid or duplicate name keeps the prompt open with an explanation.
+- The palette includes creation, navigation, task editing, status/project moves, task order, Today membership, blocking, project editing and deletion, collapsing projects, column management, appearance, Settings, export, restore, and confirmed cleanup.
 - Escape: close the current dialog or cancel confirmation.
 
-Cmd+Shift+P is the only app-specific shortcut. The native Mac menu forwards it to the interface. Standard text editing and dialog/palette navigation keys remain available. Window-level shortcuts (with Control equivalents) work when the host delivers them. These shortcuts do not operate outside the app. Browser Cmd+Shift+P was verified; the Mac bundle builds successfully, but native keyboard operation is not yet interactively verified.
+Cmd+Shift+P is the only app-specific shortcut. The native Mac menu forwards it to the interface, and also provides About, Hide, Quit, Close Window, standard editing, and a Window menu (Minimize, Zoom, Enter Full Screen). These shortcuts do not operate outside the app.
 
 ## Code layout
 
 - `src/lib/model.ts`: framework-independent task operations and ordering rules.
-- `src/lib/storage.ts`: replaceable, independently testable prototype persistence adapter with stale-window detection.
-- `src/lib/codec.ts`: saved-data validation and migration.
+- `src/lib/storage.ts`: the storage interface and the ordered save queue.
+- `src/lib/tauri-storage.ts` / `src/lib/browser-storage.ts`: desktop (Rust) and browser-preview storage.
+- `src/lib/codec.ts`: the board file format, validation, and future migrations.
+- `src/lib/prototype.ts`: frozen importer for boards saved by the browser prototype.
+- `src-tauri/src/storage.rs`: the board file, revisions, backups, restore, export, and import.
+- `src-tauri/src/main.rs`: native menu, storage commands, single instance, and saving before quit.
 - `src/components/Settings.svelte`: appearance and column management.
-- `src/components/TaskPalette.svelte`: keyboard command list, filtering, nested navigation, and action dispatch.
+- `src/components/TaskPalette.svelte`: the command palette and its name prompt.
 - `src/components/NewTaskDialog.svelte`: focused task creation.
-- `src/components/TextPrompt.svelte`: keyboard-friendly column naming.
-- `src/lib/commands.ts`: command types and nested search.
+- `src/lib/commands.ts`: command types, fuzzy matching, and recent-first ordering.
 - `src/lib/command-registry.ts`: available app commands and task/project choices.
 - `src/components/ProjectDialog.svelte`: project creation and name/colour editing.
 - `src/components/ConfirmDialog.svelte`: confirmation before task deletion and clearing Today.
-- `src/lib/native.ts`: native menu event subscription and cleanup.
+- `src/lib/native.ts`: chooses desktop or browser storage; native menu and quit events.
 - `src/lib/theme.ts`: appearance preference and system resolution.
 - `src/components/Board.svelte`: project swimlanes and drag targets.
 - `src/components/TaskCard.svelte`: compact card controls.
