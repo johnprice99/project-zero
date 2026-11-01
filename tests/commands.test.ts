@@ -25,7 +25,7 @@ test('matching is fuzzy and prefers word starts and runs of letters', () => {
   assert(score('nt', 'New task')! > score('nt', 'Done items')!);
   const { commands } = registry();
   assert.equal(filterCommands(commands, 'gtod')[0].id, 'today');
-  assert.equal(filterCommands(commands, 'export')[0].id, 'export');
+  assert.equal(filterCommands(commands, 'settings')[0].id, 'settings');
 });
 test('choosing a task and then a destination dispatches the move', () => {
   const { commands, calls } = registry();
@@ -52,13 +52,13 @@ test('task names are matched within a list', () => {
 test('recently used commands come first, most recent first, up to eight', () => {
   const { commands } = registry();
   let recent: string[] = [];
-  for (const id of ['settings', 'today', 'export']) recent = rememberRecent(recent, id);
+  for (const id of ['settings', 'today', 'new-project']) recent = rememberRecent(recent, id);
   recent = rememberRecent(recent, 'today');
   assert.deepEqual(
     orderByRecent(commands, recent)
       .slice(0, 4)
       .map(c => c.id),
-    ['today', 'export', 'settings', 'new-task'],
+    ['today', 'new-project', 'settings', 'new-task'],
   );
   for (let i = 0; i < 10; i++) recent = rememberRecent(recent, `c${i}`);
   assert.equal(recent.length, 8);

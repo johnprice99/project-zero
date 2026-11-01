@@ -1,4 +1,4 @@
-import { BoardFormatError, decodeAnyBoard, decodeBoard, encodeBoard } from './codec.ts';
+import { BoardFormatError, decodeBoard, encodeBoard, SCHEMA } from './codec.ts';
 import type { Board } from './model.ts';
 
 // Where the board is kept: a file, by Rust (tauri-storage.ts); the tests use one in memory.
@@ -7,18 +7,6 @@ export interface StorageBackend {
   load(): Promise<{ revision: number; contents: string } | null>;
   // Refuses with ConflictError unless the stored revision still matches.
   save(expectedRevision: number, contents: string): Promise<number>;
-  // Replaces the board for restores. Backs up the current board first.
-  replace(contents: string): Promise<number>;
-  listBackups(): Promise<BackupInfo[]>;
-  readBackup(id: string): Promise<string>;
-  // Resolves false when the user cancels.
-  exportFile(fileName: string, contents: string): Promise<boolean>;
-  importFile(): Promise<string | null>;
-}
-export interface BackupInfo {
-  id: string;
-  savedAt: number;
-  reason: string;
 }
 export class ConflictError extends Error {}
 export type LoadSource = 'saved' | 'upgraded' | 'empty';
@@ -28,7 +16,6 @@ interface Waiter {
   reject: (error: unknown) => void;
 }
 interface Job {
-  kind: 'save' | 'replace';
   board: Board;
   waiters: Waiter[];
 }
@@ -39,7 +26,7 @@ interface Job {
 export function createBoardStore(backend: StorageBackend) {
   let revision: number | null = null;
   let saved: Board | null = null;
-  let queue: Job[] = [];
+  let next: Job | null = null;
   let idle: Promise<void> = Promise.resolve();
   let draining = false;
   let loading = false;
@@ -60,33 +47,23 @@ export function createBoardStore(backend: StorageBackend) {
 
   async function drain(): Promise<void> {
     draining = true;
-    while (queue.length) {
-      const job = queue.shift()!;
+    while (next) {
+      const job = next;
+      next = null;
       try {
-        const contents = encodeChecked(job.board);
-        revision = job.kind === 'replace' ? await backend.replace(contents) : await backend.save(revision!, contents);
+        revision = await backend.save(revision!, encodeChecked(job.board));
         saved = job.board;
         lastError = null;
         for (const waiter of job.waiters) waiter.resolve();
       } catch (error) {
         lastError = error;
-        const abandoned = queue.flatMap(queued => queued.waiters);
-        queue = [];
+        // Changes queued during the failed save were built on it.
+        const abandoned = (next as Job | null)?.waiters ?? [];
+        next = null;
         for (const waiter of [...job.waiters, ...abandoned]) waiter.reject(error);
       }
     }
     draining = false;
-  }
-  function schedule(kind: Job['kind'], board: Board): Promise<void> {
-    if (loading) return Promise.reject(new Error('The saved board is being reloaded. Try again.'));
-    return new Promise((resolve, reject) => {
-      const last = queue.at(-1);
-      if (kind === 'save' && last?.kind === 'save') {
-        last.board = board;
-        last.waiters.push({ resolve, reject });
-      } else queue.push({ kind, board, waiters: [{ resolve, reject }] });
-      if (!draining) idle = drain();
-    });
   }
 
   return {
@@ -98,24 +75,28 @@ export function createBoardStore(backend: StorageBackend) {
         revision = null;
         saved = null;
         const file = await backend.load();
-        if (file) {
-          const { board, upgraded } = decodeAnyBoard(JSON.parse(file.contents));
-          [revision, saved] = [file.revision, board];
-          return { board, source: upgraded ? 'upgraded' : 'saved' };
+        if (!file) {
+          revision = 0;
+          return { board: null, source: 'empty' };
         }
-        revision = 0;
-        return { board: null, source: 'empty' };
+        const doc = JSON.parse(file.contents) as { schema?: unknown };
+        const board = decodeBoard(doc);
+        [revision, saved] = [file.revision, board];
+        return { board, source: doc.schema === SCHEMA ? 'saved' : 'upgraded' };
       } finally {
         loading = false;
       }
     },
     save(board: Board): Promise<void> {
+      if (loading) return Promise.reject(new Error('The saved board is being reloaded. Try again.'));
       if (revision === null) return Promise.reject(new Error('The saved board has not been loaded.'));
-      return schedule('save', board);
-    },
-    // Works even when the saved board could not be read, so a backup can recover it.
-    replace(board: Board): Promise<void> {
-      return schedule('replace', board);
+      return new Promise((resolve, reject) => {
+        if (next) {
+          next.board = board;
+          next.waiters.push({ resolve, reject });
+        } else next = { board, waiters: [{ resolve, reject }] };
+        if (!draining) idle = drain();
+      });
     },
     saved(): Board | null {
       return saved;
@@ -125,20 +106,6 @@ export function createBoardStore(backend: StorageBackend) {
     async flush(): Promise<{ saved: boolean; error: unknown }> {
       while (draining) await idle;
       return { saved: lastError === null, error: lastError };
-    },
-    listBackups(): Promise<BackupInfo[]> {
-      return backend.listBackups();
-    },
-    async readBackup(id: string): Promise<Board> {
-      return decodeAnyBoard(JSON.parse(await backend.readBackup(id))).board;
-    },
-    async importFile(): Promise<Board | null> {
-      const contents = await backend.importFile();
-      return contents === null ? null : decodeAnyBoard(JSON.parse(contents)).board;
-    },
-    exportFile(board: Board, date = new Date()): Promise<boolean> {
-      const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      return backend.exportFile(`project-zero-${day}.json`, JSON.stringify(encodeBoard(board), null, 2));
     },
   };
 }

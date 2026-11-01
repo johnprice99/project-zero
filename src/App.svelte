@@ -16,7 +16,7 @@
   import TaskPalette from './components/TaskPalette.svelte';
   import { limits, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
   import { readableError } from './lib/codec';
-  import { ConflictError, type BackupInfo } from './lib/storage';
+  import { ConflictError } from './lib/storage';
   import { createCommitter } from './lib/commit';
   import { readTheme, applyTheme, type Theme } from './lib/theme';
 
@@ -37,7 +37,6 @@
   let draftDirty = $state(false);
   let storageBlocked = $state(false);
   let reloading: Promise<void> | null = null;
-  let backups = $state<BackupInfo[]>([]);
   let recentCommands = $state(readRecentCommands());
   let paletteOpenedAt = 0;
   let sidebarWidth = $state(readSidebarWidth());
@@ -152,7 +151,6 @@
     // The menu shortcut and the window key handler can both fire for one key press.
     if (confirmation || (paletteOpen && Date.now() - paletteOpenedAt < 300)) return;
     paletteOpenedAt = Date.now();
-    void store.listBackups().then(list => backups = list, () => backups = []);
     replaceForm(() => openPanel({ kind: 'palette' }), 'open the command palette');
   }
   // Asks before an unsaved form is replaced.
@@ -174,41 +172,6 @@
   function requestColumnRemoval(id: string, destination: string) {
     confirmation = { title: 'Remove column?', message: `Move tasks from “${board.columns.find(c => c.id === id)?.name}” to “${board.columns.find(c => c.id === destination)?.name}” and remove the column?`, action: 'Remove column', run: () => void commit(b => removeColumn(b, id, destination)) };
   }
-  async function exportTasks() {
-    await store.flush();
-    const saved = store.saved();
-    if (!saved) return;
-    try { await store.exportFile(saved); }
-    catch (error) { saveError = readableError(error, 'The tasks could not be exported.'); }
-  }
-  async function askRestore(read: () => Promise<Board | null>, source: string) {
-    let restored: Board | null;
-    try { restored = await read(); }
-    catch (error) { saveError = readableError(error, 'That file could not be read.'); return; }
-    if (!restored) return;
-    const next = restored;
-    confirmation = {
-      title: 'Replace the board?',
-      message: `Replace the current board with ${source} (${next.projects.length} projects, ${next.tasks.length} tasks)? A backup of the current board is kept.`,
-      action: 'Replace board',
-      run: () => void restore(next),
-    };
-  }
-  // Shown straight away, like any change, so edits made while it saves build on the restored board.
-  async function restore(next: Board) {
-    const [before, wasBlocked] = [board, storageBlocked];
-    board = next;
-    storageBlocked = false;
-    switchView('all');
-    try {
-      await store.replace(next);
-      saveError = '';
-    } catch (error) {
-      board = store.saved() ?? before;
-      storageBlocked = wasBlocked;
-      saveError = readableError(error, 'The board could not be restored.');
-    }
-  }
   let allCommands = $derived(buildCommands(board, view, projectId, {
     newTask, newProject: () => openPanel({ kind: 'project', id: null }), editProject: (id) => openPanel({ kind: 'project', id }), deleteProject: askDeleteProject,
     project: openProject, all: () => switchView('all'), todayView: () => switchView('today'), settings: openSettings,
@@ -225,11 +188,9 @@
     about: openAbout, checkForUpdates: () => void checkForUpdates().catch(error => saveError = readableError(error, 'Couldn’t check for updates.')),
     website: () => void openLink('website'), reportProblem: () => void openLink('issues'),
     addColumn: () => promptForColumn(null), renameColumn: promptForColumn,
-    removeColumn: requestColumnRemoval, export: () => void exportTasks(),
-    restoreFile: () => void askRestore(() => store.importFile(), 'this file'),
-    restoreBackup: (id) => void askRestore(() => store.readBackup(id), 'this backup'),
-  }, { theme, backups }));
-  let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.group === 'Help' || command.id.startsWith('restore-')) : allCommands);
+    removeColumn: requestColumnRemoval,
+  }, { theme }));
+  let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.group === 'Help') : allCommands);
   function askDeleteProject(id: string) {
     const project = board.projects.find(p => p.id === id);
     if (!project || storageBlocked) return;

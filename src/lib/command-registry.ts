@@ -1,7 +1,6 @@
 import { protectedColumn, type Board, type View } from './model.ts';
 import type { Command } from './commands.ts';
 import type { Theme } from './theme';
-import type { BackupInfo } from './storage.ts';
 export interface CommandActions {
   newTask(): void;
   newProject(): void;
@@ -30,23 +29,6 @@ export interface CommandActions {
   addColumn(): void;
   renameColumn(id: string): void;
   removeColumn(id: string, destination: string): void;
-  export(): void;
-  restoreFile(): void;
-  restoreBackup(id: string): void;
-}
-const backupReasons: Record<string, string> = {
-  opened: 'Before the first change after opening',
-  interval: 'Automatic',
-  restore: 'Before a restore',
-};
-function backupCommand(backup: BackupInfo, a: CommandActions): Command {
-  const label = new Date(backup.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  return {
-    id: `restore-backup-${backup.id}`,
-    label,
-    detail: backupReasons[backup.reason] ?? 'Backup',
-    run: () => a.restoreBackup(backup.id),
-  };
 }
 const appearances: [Theme, string][] = [
   ['system', 'System'],
@@ -58,9 +40,9 @@ export function buildCommands(
   view: View,
   projectId: string | null,
   a: CommandActions,
-  context: { theme?: Theme; backups?: BackupInfo[] } = {},
+  context: { theme?: Theme } = {},
 ): Command[] {
-  const { theme, backups = [] } = context;
+  const { theme } = context;
   const active = board.tasks.filter(t => t.status !== board.completedColumnId);
   const projectName = (id: string) => board.projects.find(p => p.id === id)?.name ?? '';
   const taskItems = (tasks: typeof board.tasks, key: string, action: (id: string) => void): Command[] =>
@@ -231,14 +213,6 @@ export function buildCommands(
       hint: theme === id ? '✓' : undefined,
       run: () => a.theme(id),
     })),
-    { id: 'export', label: 'Export tasks', group: 'Data', run: a.export },
-    { id: 'restore-file', label: 'Restore from exported file…', group: 'Data', run: a.restoreFile },
-    {
-      id: 'restore-backup',
-      label: 'Restore from backup…',
-      group: 'Data',
-      children: backups.map(backup => backupCommand(backup, a)),
-    },
     { id: 'about', label: 'About Project Zero', group: 'Help', run: a.about },
     { id: 'check-updates', label: 'Check for Updates…', group: 'Help', run: a.checkForUpdates },
     { id: 'website', label: 'Project Zero Website', group: 'Help', run: a.website },

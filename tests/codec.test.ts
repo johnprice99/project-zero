@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeAnyBoard, decodeBoard, encodeBoard, readableError, SCHEMA } from '../src/lib/codec.ts';
+import { decodeBoard, encodeBoard, readableError, SCHEMA } from '../src/lib/codec.ts';
 import { sampleBoard } from '../src/lib/sample.ts';
 
 const roundtrip = (value: unknown) => JSON.parse(JSON.stringify(value));
@@ -92,14 +92,6 @@ test('boards from a newer version of the app are refused rather than misread', (
   const doc = { ...roundtrip(encodeBoard(sampleBoard())), schema: SCHEMA + 1 };
   assert.throws(() => decodeBoard(doc), /newer version of Project Zero/);
   assert.throws(() => decodeBoard({ ...doc, schema: undefined }), /schema is missing/);
-});
-
-test('restores accept saved documents and backup files, and refuse other files', () => {
-  const board = sampleBoard();
-  const stored = roundtrip(encodeBoard(board));
-  assert.deepEqual(decodeAnyBoard(stored), { board, upgraded: false });
-  assert.deepEqual(decodeAnyBoard({ app: 'project-zero', revision: 4, savedAt: 1, board: stored }), { board, upgraded: false });
-  assert.throws(() => decodeAnyBoard({ ...board, version: 6 }), /schema is missing/);
 });
 
 test('read errors are explained in plain language', () => {

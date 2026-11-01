@@ -4,12 +4,11 @@ mod updates;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
-use storage::{BackupInfo, LoadedBoard, Storage, StorageError};
+use storage::{LoadedBoard, Storage, StorageError};
 use tauri::{
     menu::{MenuBuilder, MenuItem, SubmenuBuilder},
     AppHandle, Emitter, Manager, RunEvent, State, WindowEvent,
 };
-use tauri_plugin_dialog::DialogExt;
 
 /// How long to wait for the window to answer before quitting anyway (only if it never does).
 const EXIT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -100,63 +99,6 @@ async fn save_board(
 }
 
 #[tauri::command]
-async fn replace_board(storage: State<'_, Storage>, contents: String) -> Result<u64, StorageError> {
-    storage.replace(&contents)
-}
-
-#[tauri::command]
-async fn list_backups(storage: State<'_, Storage>) -> Result<Vec<BackupInfo>, StorageError> {
-    storage.list_backups()
-}
-
-#[tauri::command]
-async fn read_backup(storage: State<'_, Storage>, id: String) -> Result<String, StorageError> {
-    storage.read_backup(&id)
-}
-
-#[tauri::command]
-async fn export_board(
-    app: AppHandle,
-    file_name: String,
-    contents: String,
-) -> Result<bool, StorageError> {
-    let mut dialog = app
-        .dialog()
-        .file()
-        .add_filter("Project Zero board", &["json"])
-        .set_file_name(file_name);
-    if let Some(window) = app.get_webview_window("main") {
-        dialog = dialog.set_parent(&window);
-    }
-    let Some(path) = dialog.blocking_save_file() else {
-        return Ok(false);
-    };
-    let path = path
-        .into_path()
-        .map_err(|_| StorageError::invalid("That location cannot be used."))?;
-    storage::export_to(&path, &contents)?;
-    Ok(true)
-}
-
-#[tauri::command]
-async fn import_board(app: AppHandle) -> Result<Option<String>, StorageError> {
-    let mut dialog = app
-        .dialog()
-        .file()
-        .add_filter("Project Zero board", &["json"]);
-    if let Some(window) = app.get_webview_window("main") {
-        dialog = dialog.set_parent(&window);
-    }
-    let Some(path) = dialog.blocking_pick_file() else {
-        return Ok(None);
-    };
-    let path = path
-        .into_path()
-        .map_err(|_| StorageError::invalid("That file cannot be opened."))?;
-    storage::read_import(&path).map(Some)
-}
-
-#[tauri::command]
 async fn check_for_updates(app: AppHandle) {
     updates::check_for_updates(app, false).await;
 }
@@ -190,11 +132,6 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             load_board,
             save_board,
-            replace_board,
-            list_backups,
-            read_backup,
-            export_board,
-            import_board,
             check_for_updates,
             open_link,
             allow_exit

@@ -136,14 +136,6 @@ export function decodeBoard(value: unknown): Board {
   return validate(doc);
 }
 
-// Accept anything the app can restore from: a saved document, a backup file
-// (which wraps the document with a revision).
-export function decodeAnyBoard(value: unknown): { board: Board; upgraded: boolean } {
-  const doc = isRecord(value) && isRecord(value.board) && 'revision' in value ? value.board : value;
-  const schema = isRecord(doc) ? doc.schema : undefined;
-  return { board: decodeBoard(doc), upgraded: schema !== SCHEMA };
-}
-
 export function readableError(error: unknown, fallback: string): string {
   if (error instanceof BoardFormatError) return `The board file is not valid: ${error.message}`;
   if (error instanceof SyntaxError) return 'The board file is not valid JSON.';

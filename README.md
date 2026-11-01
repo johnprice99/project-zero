@@ -11,7 +11,7 @@ A clear view of what's next. A small to-do board for your Mac that works like a 
 - Columns: rename them or add one in Settings or the palette; new columns go before Done. To do, Doing and Done can't be removed, even when renamed. Removing another column asks where its tasks go.
 - **Clear all completed tasks** deletes every finished task; **Clear completed tasks in this view** deletes those in the current project or Today. Both ask first. Deleting is permanent: there is no archive or undo.
 - Settings (in the palette): appearance (System, Light or Dark) and columns. Drag the sidebar's edge to resize it.
-- Every change is saved the moment you make it, and the file is never left half written. Backups are made by themselves; **Export tasks** and **Restore from exported file / backup** are in the palette. See [Storage](#storage).
+- Every change is saved the moment you make it, and the file is never left half written. See [Storage](#storage).
 - The command palette (⇧⌘P) lists only what you can do right now, your recently used commands first. See [Keys](#keys).
 - Project Zero › **Check for Updates…** asks GitHub for the newest release and, if there is one, offers **Install and Restart**: it downloads it, checks it's genuine (signed with the developer's key), saves your board, and restarts into it. Release builds also check quietly once a day. If it can't replace itself (e.g. it's running from the disk image), it offers the download instead.
 - Project Zero › **About Project Zero**; Help › the website and **Report a Problem**. Help also searches the menus.
@@ -40,7 +40,7 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test   # Rust
 npm run format                                             # Prettier for TypeScript and scripts (Svelte files are formatted by hand)
 ```
 
-The tests are unit tests for the parts where a bug could lose work: the task and ordering rules (`model`), the board format (`codec`), the save queue (`storage`), applying and rolling back changes (`commit`), the palette (`commands`), and the Rust file storage, backups and restore. There are no browser or end-to-end tests.
+The tests are unit tests for the parts where a bug could lose work: the task and ordering rules (`model`), the board format (`codec`), the save queue (`storage`), applying and rolling back changes (`commit`), the palette (`commands`), and the Rust file storage. There are no browser or end-to-end tests.
 
 ## Storage
 
@@ -49,13 +49,11 @@ The board is one file: `~/Library/Application Support/com.johnprice.projectzero/
 - **Saving.** Each change shows at once and is saved straight away, in order; changes made during a save are combined into the next one. Rust writes a temporary file, flushes it to disk, and renames it over the board, so a crash leaves the old board or the new one, never a mix. Every board is checked before it is written. If a save fails, the board goes back to its last saved state and says so; an open form keeps your edits so you can try again.
 - **One copy.** The file has a revision number, and a save based on an older one is refused. Only one copy of the installed app can run.
 - **Quitting** (⌘Q, closing the window, or restarting after an update) waits for saves to finish. If the latest change couldn't be saved, it asks: **Don't Quit** or **Quit Anyway**. Quitting from the Dock or logging out doesn't wait; saves take milliseconds, so at most a change made in that instant is lost.
-- **Backups** of the previous board go to `backups/` before the first change after opening the app, then at most every 30 minutes, and before any restore. The newest 20 are kept, plus one a day for 60 days.
-- **Unreadable board.** Nothing is overwritten and editing pauses. Restore from a backup or an exported file; the unreadable file is kept as a backup first.
-- **Export and restore.** Export tasks saves a readable JSON copy where you choose. Restore accepts an export or a backup, asks first, and backs up the current board.
+- **Unreadable board.** Nothing is overwritten and editing pauses. Fix the board file (path above) or move it aside, then reopen the app.
 - **Format.** The board has a `schema` number (currently 1), checked by `src/lib/codec.ts`. A board from a newer version of the app is refused rather than misread.
 - Theme, sidebar width and recent commands are device preferences kept by the app, not in the board.
 
-Backups can't protect against losing the whole Mac. Keep exports somewhere else, and keep the data folder itself out of iCloud Drive or Dropbox.
+The board is a single file in your Library; if you use Time Machine, it backs it up along with everything else. Keep the data folder out of iCloud Drive or Dropbox.
 
 ## Releasing
 
@@ -101,7 +99,7 @@ Everything is in the command palette (⇧⌘P). Type to filter: the letters must
 
 - `src/lib/` — the app without its interface: `model` (tasks, ordering, Today, columns), `codec` (the board format), `storage` (the save queue) with `tauri-storage` (Rust's file), `commit` (apply a change, save it, roll back on failure), `commands` and `command-registry` (the palette), `native` (menus, quitting, updates, links), `theme`, `preferences`, `sample` (the first-run board).
 - `src/components/` and `src/App.svelte` — the interface. `App.svelte` holds the board and which dialog is open. `src/assets/` — the About panel's icons.
-- `src-tauri/src/` — Rust: `storage` (the board file, revisions, backups, restore, export), `main` (menu, commands, saving before quit), `updates`, `dialogs`.
+- `src-tauri/src/` — Rust: `storage` (the board file and its revisions), `main` (menu, commands, saving before quit), `updates`, `dialogs`.
 - `tests/` — unit tests (Node's test runner), with an in-memory stand-in for the Rust storage in `backends.ts`; the Rust tests are in `storage.rs` and `updates.rs`.
 - `src-tauri/icons/` — the app icon (see [Icon](#icon)).
 - `scripts/release.mjs` — builds a release (`npm run dist`).

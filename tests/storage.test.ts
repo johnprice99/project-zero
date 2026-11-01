@@ -7,7 +7,7 @@ import { controlledBackend, memoryBackend, type Disk } from './backends.ts';
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const titled = (title: string, board: Board = sampleBoard()) => patchTask(board, 'sample-0', { title });
-const disk = (): Disk => ({ board: null, revision: 0, replaced: null });
+const disk = (): Disk => ({ board: null, revision: 0 });
 
 test('first launch and later saves persist across restarts', async () => {
   const shared = disk();
@@ -24,10 +24,6 @@ test('an unreadable saved board is never overwritten by normal saves', async () 
   await assert.rejects(store.load());
   await assert.rejects(store.save(sampleBoard()), /not been loaded/);
   assert.equal(shared.board, '{broken');
-  // An explicit restore may replace it, keeping the unreadable copy.
-  await store.replace(sampleBoard());
-  assert.equal(shared.replaced, '{broken');
-  assert.deepEqual((await store.load()).board, sampleBoard());
 });
 
 test('saves run in order and changes made during a save are combined', async () => {

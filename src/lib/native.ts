@@ -14,8 +14,7 @@ export interface Startup {
   board: Board;
   error: unknown;
 }
-// New and upgraded boards are saved straight away. Rust backs up the previous file
-// before the first save of each session.
+// New and upgraded boards are saved straight away.
 export async function openBoard(store: BoardStore): Promise<Startup> {
   try {
     const loaded = await store.load();

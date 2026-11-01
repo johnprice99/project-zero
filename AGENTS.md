@@ -10,10 +10,10 @@ A small macOS (Apple silicon only) to-do board. Tauri 2 + Svelte 5 + TypeScript,
 ## Layout
 
 - `src/lib/model.ts` — the task rules, as pure functions from board to board. Keep rules here, not in components.
-- Every change goes through `commit()` in `App.svelte`, which uses `src/lib/commit.ts`: the board changes on screen at once, `src/lib/storage.ts` saves in order, and a failed save rolls back. Don't change `board` any other way (loading, restoring and reloading excepted), and don't make a change wait for its save before showing: later changes would be built on a stale board.
+- Every change goes through `commit()` in `App.svelte`, which uses `src/lib/commit.ts`: the board changes on screen at once, `src/lib/storage.ts` saves in order, and a failed save rolls back. Don't change `board` any other way (loading and reloading excepted), and don't make a change wait for its save before showing: later changes would be built on a stale board.
 - `src/lib/codec.ts` — the board format (`schema: 1`). A format change needs `SCHEMA` bumped, a migration step, and a test. Every save is checked against it first, so a model bug can't write a board that won't load.
 - `src/lib/command-registry.ts` — the palette's commands; `src/lib/commands.ts` — matching and recent-first order.
-- `src-tauri/src/` — `storage.rs` (atomic writes, revisions, backups, restore), `main.rs` (menu, commands, the exit gate), `updates.rs` (Check for Updates), `dialogs.rs`.
+- `src-tauri/src/` — `storage.rs` (atomic writes, revisions), `main.rs` (menu, commands, the exit gate), `updates.rs` (Check for Updates), `dialogs.rs`.
 
 ## Rules
 

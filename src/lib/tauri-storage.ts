@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
-import { ConflictError, type BackupInfo, type StorageBackend } from './storage.ts';
+import { ConflictError, type StorageBackend } from './storage.ts';
 
-// Rust's board file. Rust owns it: atomic replacement, revision checks, and backups
+// Rust's board file. Rust owns it: atomic replacement and revision checks
 // (see src-tauri/src/storage.rs). The webview has no direct file access.
 interface RustError {
   kind: 'conflict' | 'invalid' | 'io';
@@ -22,10 +22,5 @@ export function createTauriBackend(): StorageBackend {
   return {
     load: () => call('load_board'),
     save: (expectedRevision, contents) => call('save_board', { expectedRevision, contents }),
-    replace: contents => call('replace_board', { contents }),
-    listBackups: () => call<BackupInfo[]>('list_backups'),
-    readBackup: id => call('read_backup', { id }),
-    exportFile: (fileName, contents) => call('export_board', { fileName, contents }),
-    importFile: () => call('import_board'),
   };
 }
