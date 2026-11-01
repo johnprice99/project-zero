@@ -8,7 +8,7 @@ Accepted on 31 October 2026:
 
 - **Project Zero** is the app name.
 - The name represents a clear head and nothing slipping through the cracks, alongside the satisfaction of completing work. An empty backlog is not an obligation.
-- **P0** is the starting direction for the app icon: a simple, compact monogram. A provisional vector monogram and generated desktop icons are included.
+- **App icon** (chosen 1 November 2026): “P0” with a slashed zero, white on a purple tile (`assets/icon-concepts/project-zero-p-slashed-zero-tile.png`).
 - Supporting line: “A clear view of what's next.” (used in About and on the website).
 - Bundle identifier `com.johnprice.projectzero`, following Typr's `com.johnprice.typr`. Do not change it: it decides where the board is stored.
 
@@ -151,12 +151,22 @@ The app is ad-hoc signed and not notarised, so a downloaded copy shows Gatekeepe
 
 ## Icon
 
-The P0 monogram is provisional. To replace it, from a 1024 × 1024 PNG:
+The artwork is `assets/icon-concepts/project-zero-p-slashed-zero-tile.png`, with a darker variant (`-dark`). `assets/icon.png` and `assets/icon-dark.png` are the same images fitted to Apple's icon grid: the tile scaled to 824 × 824 and centred on a 1024 × 1024 transparent canvas, so it matches the size of other Dock icons.
 
-1. `npx tauri icon path/to/icon.png` regenerates `src-tauri/icons/`. It also makes Android, iOS, and Windows icons, which a Mac-only app doesn't use: `rm -rf src-tauri/icons/{android,ios,icon.ico,StoreLogo.png,Square*Logo.png}`.
-2. Replace `src/assets/icon-light.png` and `src/assets/icon-dark.png` (the About panel; 256 × 256 is enough). Use the same image twice if there is no dark variant.
-3. Replace `public/favicon.svg` (the browser preview's tab icon), or remove it and point `index.html` at a PNG.
-4. `npm run screenshots` to update the website's icon and screenshots.
+- **Dock, Finder, and the app bundle** use the light icon. macOS 26 can show dark and tinted Dock icons only from an Icon Composer `.icon`, which Tauri doesn't build, so the Dock always shows the light one.
+- **The About panel** shows the light icon, or the dark one in dark mode (`src/assets/icon-light.png`, `src/assets/icon-dark.png`, 256 × 256).
+- **The website** shows the light icon, as Typr's does.
+
+To change the icon, put new 1024 × 1024 artwork (tile 824 × 824, centred) at `assets/icon.png` and `assets/icon-dark.png`, then:
+
+```sh
+npx tauri icon assets/icon.png
+rm -rf src-tauri/icons/{android,ios,icon.ico,StoreLogo.png,Square*Logo.png}   # not used on a Mac
+sips -z 256 256 assets/icon.png --out src/assets/icon-light.png
+sips -z 256 256 assets/icon-dark.png --out src/assets/icon-dark.png
+sips -z 64 64 assets/icon.png --out public/favicon.png
+npm run screenshots   # also copies the icon to the website
+```
 
 ## Changing the theme
 
