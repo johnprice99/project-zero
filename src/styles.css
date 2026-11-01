@@ -27,6 +27,8 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; padding: 32px var(--content-padding) 24px; gap: 16px; flex-wrap: wrap; }
 h1 { font-size: 26px; line-height: 1.3; letter-spacing: -.6px; font-weight: 600; }
 .board-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.new-task-button { display: inline-flex; align-items: center; gap: 6px; }
+.projects-add { width: 24px; height: 24px; }
 .board-scroll { overflow-x: auto; padding: 0 var(--content-padding); flex: 1; }
 .board { min-width: calc(var(--column-min-width) * var(--column-count) + var(--column-gap) * (var(--column-count) - 1)); padding-bottom: 24px; }
 .column-headings, .lane-columns { display: grid; grid-template-columns: repeat(var(--column-count), minmax(0, 1fr)); gap: var(--column-gap); }
@@ -115,7 +117,6 @@ textarea.notes-input { resize: vertical; }
 .command-hint { margin-left: auto; color: var(--text-muted); font-size: 12px; }
 .command-option.selected { background: var(--accent); color: var(--on-accent); }
 .command-option.selected .command-detail, .command-option.selected .command-hint { color: color-mix(in srgb, var(--on-accent) 75%, transparent); }
-.command-message { margin: 0; padding: 10px 18px 14px; border-top: 1px solid var(--border); color: var(--error-text); font-size: var(--text-sm); }
 @media (max-width: 900px) { :root { --sidebar-width: 176px; --content-padding: 20px; --column-gap: 14px; } }
 @media (max-width: 700px) { .board-actions { gap: 7px; } }
 @media (max-width: 580px) { :root { --sidebar-width: 54px; --content-padding: 14px; } .sidebar { padding: 24px 7px 12px; } .view-nav button > span, .project-nav, .projects-header { display: none; } .view-nav button { justify-content: center; padding: 10px; } }

@@ -4,7 +4,6 @@ import {
   deleteProject,
   projectColors,
   addTask,
-  reorderTask,
   clearToday,
   saveProject,
   protectedColumn,
@@ -179,18 +178,6 @@ test('collapse preferences are deduplicated and ignore unknown projects', () => 
   assert.deepEqual(next.collapsedProjects, ['zero', 'web']);
 });
 
-test('keyboard priority changes in Today preserve project-board order', () => {
-  const original = sampleBoard();
-  const next = reorderTask(original, 'sample-7', 'top', 'today');
-  assert.equal(lane(next, 'today', 'todo')[0].id, 'sample-7');
-  assert.deepEqual(
-    next.tasks.map(t => t.order),
-    original.tasks.map(t => t.order),
-  );
-  const down = reorderTask(next, 'sample-7', 'down', 'today');
-  assert.equal(lane(down, 'today', 'todo').at(-1)!.id, 'sample-7');
-});
-
 test('deleting a project removes all its tasks while preserving other projects', () => {
   const original = setCollapsed(sampleBoard(), ['zero', 'web']);
   const next = deleteProject(original, 'zero');
@@ -245,7 +232,7 @@ test('task titles are validated consistently during creation and editing', () =>
   assert.equal(patchTask(board, 'sample-0', { title: '  Trimmed title  ' }).tasks[0].title, 'Trimmed title');
 });
 
-test('mixed drag and keyboard operations preserve task data and unique priority positions', () => {
+test('mixed drag and Today operations preserve task data and unique priority positions', () => {
   let board = addColumn(sampleBoard(), 'Review');
   const original = new Map(board.tasks.map(task => [task.id, { title: task.title, notes: task.notes }]));
   let seed = 42;
@@ -258,8 +245,12 @@ test('mixed drag and keyboard operations preserve task data and unique priority 
     const task = choose(board.tasks);
     const view = choose(['all', 'today'] as const);
     if (step % 3 === 0) board = toggleToday(board, task.id);
-    else if (step % 3 === 1) board = reorderTask(board, task.id, choose(['top', 'up', 'down', 'bottom']), view);
-    else {
+    else if (step % 3 === 1) {
+      // Dragging within its own lane: reorders only.
+      const own = lane(board, view, task.status, view === 'all' ? task.projectId : undefined);
+      if (view === 'all' || task.today)
+        board = moveTask(board, task.id, task.status, view, task.projectId, choose([...own, undefined])?.id);
+    } else {
       const column = choose(board.columns).id;
       const project = choose(board.projects).id;
       const candidates = lane(board, view, column, view === 'all' ? project : undefined);

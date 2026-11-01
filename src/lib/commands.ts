@@ -13,14 +13,6 @@ export interface Command {
   run?: () => unknown;
   children?: Command[];
 }
-// The palette as a one-line prompt, e.g. for a column name. `submit` resolves to an
-// error message to show, or null when the prompt can close.
-export interface PalettePrompt {
-  placeholder: string;
-  value?: string;
-  submit: (value: string) => Promise<string | null>;
-}
-
 const MAX_SHOWN = 60;
 const MAX_RECENT = 8;
 

@@ -11,5 +11,6 @@
   </div>
   {#if showProject}<span class="project-label card-project"><span class="project-dot" style={`background: ${projectColor(project.color)}`}></span>{project.name}</span>{/if}
   {#if task.notes}<p class="card-description">{task.notes}</p>{/if}
-  {#if !completed}<div class="card-footer"><button class="today-toggle" class:selected={task.today} aria-pressed={task.today} aria-label={task.today ? "Remove from today's work" : "Add to today's work"} onclick={ontoday}><Icon name="sun" size={15}/><span>{task.today ? "Remove from today's work" : "Add to today's work"}</span></button></div>{/if}
+  <!-- A finished card keeps its Today button while it's in Today, so it can be taken off. -->
+  {#if !completed || task.today}<div class="card-footer"><button class="today-toggle" class:selected={task.today} aria-pressed={task.today} aria-label={task.today ? "Remove from today's work" : "Add to today's work"} onclick={ontoday}><Icon name="sun" size={15}/><span>{task.today ? "Remove from today's work" : "Add to today's work"}</span></button></div>{/if}
 </article>

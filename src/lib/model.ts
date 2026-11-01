@@ -58,16 +58,6 @@ export function emptyBoard(): Board {
     tasks: [],
   };
 }
-// True when there is nothing for Start over to clear: no projects and the default columns.
-export function isEmptyBoard(board: Board): boolean {
-  const defaults = emptyBoard();
-  return (
-    !board.projects.length &&
-    !board.tasks.length &&
-    board.completedColumnId === defaults.completedColumnId &&
-    JSON.stringify(board.columns) === JSON.stringify(defaults.columns)
-  );
-}
 export function lane(board: Board, view: View, status: Status, projectId?: string): Task[] {
   return board.tasks
     .filter(t => t.status === status && (view !== 'today' || t.today) && (!projectId || t.projectId === projectId))
@@ -222,25 +212,6 @@ export function saveProject(board: Board, id: string | null, name: string, color
       ? board.projects.map(p => (p.id === id ? { ...p, name: title, color } : p))
       : [...board.projects, { id: crypto.randomUUID(), name: title, color }],
   };
-}
-
-export function reorderTask(board: Board, id: string, direction: 'top' | 'up' | 'down' | 'bottom', view: View): Board {
-  const task = board.tasks.find(t => t.id === id);
-  if (!task) return board;
-  const scope = view === 'today' && task.today ? 'today' : 'all';
-  const list = lane(board, scope, task.status, scope === 'all' ? task.projectId : undefined);
-  const index = list.findIndex(t => t.id === id);
-  if ((direction === 'top' || direction === 'up') && index === 0) return board;
-  if ((direction === 'bottom' || direction === 'down') && index === list.length - 1) return board;
-  const before =
-    direction === 'top'
-      ? list[0]?.id
-      : direction === 'up'
-        ? list[index - 1]?.id
-        : direction === 'down'
-          ? list[index + 2]?.id
-          : undefined;
-  return moveTask(board, id, task.status, scope, task.projectId, before);
 }
 
 export function deleteProject(board: Board, id: string): Board {

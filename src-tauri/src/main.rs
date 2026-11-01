@@ -9,6 +9,7 @@ use tauri::{
     menu::{MenuBuilder, MenuItem, SubmenuBuilder},
     AppHandle, Emitter, Manager, RunEvent, State, WindowEvent,
 };
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 /// How long to wait for the window to answer before quitting anyway (only if it never does).
 const EXIT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -60,7 +61,17 @@ fn finish_exit(app: &AppHandle) {
         return;
     }
     if gate.restart.load(Ordering::SeqCst) {
-        app.restart();
+        // Restarting from the main thread skips RunEvent::Exit, where the window-state plugin
+        // saves, so save first. The main thread also can't be waiting on a window event then.
+        let handle = app.clone();
+        let restart = app.run_on_main_thread(move || {
+            let _ = handle.save_window_state(StateFlags::all());
+            handle.restart();
+        });
+        if restart.is_err() {
+            app.restart();
+        }
+        return;
     }
     app.exit(0);
 }
@@ -113,6 +124,14 @@ fn open_link(target: String) {
     }
 }
 
+fn window_state() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    let builder = tauri_plugin_window_state::Builder::default();
+    // Development builds keep their own window, as they keep their own board.
+    #[cfg(debug_assertions)]
+    let builder = builder.with_filename(".window-state-development.json");
+    builder.build()
+}
+
 fn main() {
     let builder = tauri::Builder::default();
     // Only one copy may write the board. Development builds keep their own data folder and
@@ -127,6 +146,8 @@ fn main() {
     let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Reopens the window as it was left.
+        .plugin(window_state())
         .manage(ExitGate::default())
         .manage(updates::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
@@ -145,6 +166,18 @@ fn main() {
             #[cfg(debug_assertions)]
             let data = data.join("development");
             app.manage(Storage::new(data));
+            // Maximised the first time; after that the window-state plugin reopens it as it was left.
+            let remembered = app
+                .path()
+                .app_config_dir()?
+                .join(app.handle().filename())
+                .exists();
+            if !remembered {
+                // Cosmetic, so a failure must not stop the app starting.
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.maximize();
+                }
+            }
 
             let item =
                 |id: &str, label: &str| MenuItem::with_id(app, id, label, true, None::<&str>);
@@ -154,6 +187,15 @@ fn main() {
                 "Command Palette…",
                 true,
                 Some("CmdOrCtrl+Shift+P"),
+            )?;
+            let new_task =
+                MenuItem::with_id(app, "new-task", "New Task", true, Some("CmdOrCtrl+N"))?;
+            let new_project = MenuItem::with_id(
+                app,
+                "new-project",
+                "New Project",
+                true,
+                Some("CmdOrCtrl+Shift+N"),
             )?;
             let quit =
                 MenuItem::with_id(app, "quit", "Quit Project Zero", true, Some("CmdOrCtrl+Q"))?;
@@ -168,6 +210,9 @@ fn main() {
                 .item(&quit)
                 .build()?;
             let file_menu = SubmenuBuilder::new(app, "File")
+                .item(&new_task)
+                .item(&new_project)
+                .separator()
                 .item(&command_palette)
                 .close_window()
                 .build()?;
@@ -208,6 +253,8 @@ fn main() {
                 };
                 match event.id().0.as_str() {
                     "command-palette" => emit("project-zero:command-palette"),
+                    "new-task" => emit("project-zero:new-task"),
+                    "new-project" => emit("project-zero:new-project"),
                     "about" => emit("project-zero:about"),
                     "check-updates" => {
                         tauri::async_runtime::spawn(updates::check_for_updates(

@@ -7,7 +7,8 @@
   let collapsed = $derived(board.collapsedProjects);
   let dragging = $state<string | null>(null);
   let over = $state('');
-  let projects = $derived(board.projects.filter(p => (!projectId || p.id === projectId) && (p.id === projectId || board.tasks.some(t => t.projectId === p.id))));
+  // Every project has its row, even with no tasks yet, so a card can be dragged into it.
+  let projects = $derived(board.projects.filter(p => !projectId || p.id === projectId));
   let groups = $derived(view === 'today' ? [{ id: 'today', name: 'Today', color: 'iris' }] : projects);
   function tasks(status: Status, group: string) {
     return lane(board, view, status, view === 'all' ? group : undefined)

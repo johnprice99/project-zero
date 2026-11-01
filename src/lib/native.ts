@@ -26,9 +26,9 @@ export async function openBoard(store: BoardStore): Promise<Startup> {
   }
 }
 
-// The command palette is the only app-specific global shortcut.
-export function bindNativeMenus(openPalette: () => void): Promise<() => void> {
-  return listen('project-zero:command-palette', openPalette);
+// Menu items that open something in the window (see main.rs).
+export function onMenu(item: 'command-palette' | 'new-task' | 'new-project' | 'about', run: () => void): Promise<() => void> {
+  return listen(`project-zero:${item}`, run);
 }
 
 // Rust holds quitting and closing the window until pending saves finish. If the latest
@@ -43,11 +43,6 @@ export function bindExitFlush(flush: () => Promise<{ saved: boolean; error: unkn
       await invoke('allow_exit', { unsaved });
     }
   });
-}
-
-// Project Zero › About Project Zero shows the app's own About panel.
-export function bindAbout(open: () => void): Promise<() => void> {
-  return listen('project-zero:about', open);
 }
 
 // Rust shows its own native dialogs while checking and installing.

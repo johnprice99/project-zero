@@ -6,15 +6,15 @@
   import TaskEditor from './components/TaskEditor.svelte';
   import Icon from './components/Icon.svelte';
   import Settings from './components/Settings.svelte';
-  import { bindAbout, bindExitFlush, bindNativeMenus, checkForUpdates, openLink, type Startup } from './lib/native';
+  import { bindExitFlush, checkForUpdates, onMenu, openLink, type Startup } from './lib/native';
   import AboutPanel from './components/AboutPanel.svelte';
   import type { BoardStore } from './lib/storage';
   import NewTaskDialog from './components/NewTaskDialog.svelte';
   import { readSidebarWidth, writeSidebarWidth, clampSidebarWidth, sidebarRange, readRecentCommands, writeRecentCommands } from './lib/preferences';
-  import { rememberRecent, type PalettePrompt } from './lib/commands';
+  import { rememberRecent } from './lib/commands';
   import { buildCommands } from './lib/command-registry';
   import TaskPalette from './components/TaskPalette.svelte';
-  import { limits, emptyBoard, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
+  import { addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
   import { readableError } from './lib/codec';
   import { ConflictError } from './lib/storage';
   import { createCommitter } from './lib/commit';
@@ -22,7 +22,7 @@
 
   // One dialog at a time; a confirmation can appear above it.
   type Panel =
-    | { kind: 'palette'; prompt?: PalettePrompt } | { kind: 'about' } | { kind: 'settings' } | { kind: 'new-task' }
+    | { kind: 'palette' } | { kind: 'about' } | { kind: 'settings' } | { kind: 'new-task' }
     | { kind: 'task'; id: string } | { kind: 'project'; id: string | null };
   // main.ts loads the board before mounting, so the first frame already shows it.
   let { store, startup }: { store: BoardStore; startup: Startup } = $props();
@@ -69,8 +69,8 @@
     let disposed = false;
     const cleanups: (() => void)[] = [];
     const keep = (cleanup: () => void) => { if (disposed) cleanup(); else cleanups.push(cleanup); };
-    void bindNativeMenus(openPalette).then(keep).catch(() => { nativeError = 'Mac menu shortcuts could not be connected. Try Cmd+Shift+P in this window.'; });
-    void bindAbout(openAbout).then(keep).catch(error => console.error('About Project Zero is unavailable from the menu.', error));
+    const menus: [Parameters<typeof onMenu>[0], () => void][] = [['command-palette', openPalette], ['new-task', newTask], ['new-project', newProject], ['about', openAbout]];
+    for (const [item, run] of menus) void onMenu(item, run).then(keep).catch(() => { nativeError = 'Mac menu shortcuts could not be connected. Try Cmd+Shift+P in this window.'; });
     void bindExitFlush(() => store.flush()).then(keep).catch(error => console.error('Saving before quit is unavailable.', error));
     return () => { disposed = true; cleanups.forEach(cleanup => cleanup()); preference.removeEventListener('change', syncAppearance); };
   });
@@ -109,20 +109,7 @@
   function createColumn(name: string) {
     return commit(b => addColumn(b, name));
   }
-  const columnNameError = `Use a unique column name (up to ${limits.columnName} characters).`;
-  function promptForColumn(id: string | null) {
-    const column = board.columns.find(c => c.id === id);
-    const change = (b: Board, name: string) => (column ? renameColumn(b, column.id, name) : addColumn(b, name));
-    openPrompt({
-      placeholder: column ? `Rename “${column.name}”` : 'New column name',
-      value: column?.name,
-      submit: async name => {
-        if (column && column.name === name.trim()) return null;
-        if (change(board, name) === board) return columnNameError;
-        return (await commit(b => change(b, name))) ? null : saveError || 'Your changes could not be saved. Try again.';
-      },
-    });
-  }
+
   function removeBoardColumn(id: string, destination: string) {
     return commit(b => removeColumn(b, id, destination));
   }
@@ -141,12 +128,17 @@
   function move(id: string, status: Status, project?: string, before?: string) { void commit(b => moveTask(b, id, status, view, project, before)); }
   function switchView(next: View) { view = next; projectId = null; closeTask(); }
   function openProject(id: string) { view = 'all'; projectId = id; closeTask(); }
+  // Each dialog opens fresh ({#key panel}); asking again while it's open does nothing.
   function newTask() {
-    if (storageBlocked || confirmation) return;
-    openPanel(board.projects.length ? { kind: 'new-task' } : { kind: 'project', id: null });
+    const creatingProject = panel?.kind === 'project' && panel.id === null;
+    if (storageBlocked || confirmation || panel?.kind === 'new-task' || (!board.projects.length && creatingProject)) return;
+    replaceForm(() => openPanel(board.projects.length ? { kind: 'new-task' } : { kind: 'project', id: null }), 'start a new task');
+  }
+  function newProject() {
+    if (storageBlocked || confirmation || (panel?.kind === 'project' && panel.id === null)) return;
+    replaceForm(() => openPanel({ kind: 'project', id: null }), 'start a new project');
   }
   function openSettings() { if (confirmation) return; openPanel({ kind: 'settings' }); }
-  function openPrompt(prompt: PalettePrompt) { openPanel({ kind: 'palette', prompt }); }
   function openPalette() {
     // The menu shortcut and the window key handler can both fire for one key press.
     if (confirmation || (paletteOpen && Date.now() - paletteOpenedAt < 300)) return;
@@ -169,26 +161,15 @@
     try { await run(); } catch (error) { saveError = readableError(error, 'That command could not be completed.'); }
   }
   function chooseCommand(id: string) { recentCommands = rememberRecent(recentCommands, id); writeRecentCommands(recentCommands); }
-  function requestColumnRemoval(id: string, destination: string) {
-    confirmation = { title: 'Remove column?', message: `Move tasks from “${board.columns.find(c => c.id === id)?.name}” to “${board.columns.find(c => c.id === destination)?.name}” and remove the column?`, action: 'Remove column', run: () => void commit(b => removeColumn(b, id, destination)) };
-  }
+
   let allCommands = $derived(buildCommands(board, view, projectId, {
-    newTask, newProject: () => openPanel({ kind: 'project', id: null }), editProject: (id) => openPanel({ kind: 'project', id }), deleteProject: askDeleteProject,
+    newTask, newProject, editProject: (id) => openPanel({ kind: 'project', id }), deleteProject: askDeleteProject,
     project: openProject, all: () => switchView('all'), todayView: () => switchView('today'), settings: openSettings,
     theme: (value) => theme = value,
     collapse: (ids) => { void commit(b => setCollapsed(b, ids)); switchView('all'); },
-    editTask: (id) => openPanel({ kind: 'task', id }),
-    moveColumn: (id, column) => void commit(b => moveTask(b, id, column, 'all')),
-    moveProject: (id, project) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? moveTask(b, id, task.status, 'all', project) : b; }),
-    priority: (id, direction) => void commit(b => reorderTask(b, id, direction, view)),
-    toggleToday: (id) => void commit(b => toggleToday(b, id)),
-    toggleBlocked: (id) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? patchTask(b, id, { blocked: !task.blocked }) : b; }),
-    deleteTask: (id) => askDelete([id]),
-    clearDone, clearAllDone: askClearAllCompleted, clearToday: askClearToday, startOver: askStartOver,
+    clearDone, clearAllDone: askClearAllCompleted, clearToday: askClearToday,
     about: openAbout, checkForUpdates: () => void checkForUpdates().catch(error => saveError = readableError(error, 'Couldn’t check for updates.')),
     website: () => void openLink('website'), reportProblem: () => void openLink('issues'),
-    addColumn: () => promptForColumn(null), renameColumn: promptForColumn,
-    removeColumn: requestColumnRemoval,
   }, { theme }));
   let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.group === 'Help') : allCommands);
   function askDeleteProject(id: string) {
@@ -228,24 +209,6 @@
     const tasks = ids.length === 1 ? 'the 1 completed task' : `all ${ids.length} completed tasks`;
     confirmation = { title: 'Clear all completed tasks?', message: `Permanently delete ${tasks} across every project? This cannot be undone.`, action: 'Clear completed tasks', run: () => void commit(b => deleteTasks(b, ids)) };
   }
-  function askStartOver() {
-    if (storageBlocked) return;
-    const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
-    const items = [board.projects.length && count(board.projects.length, 'project'), board.tasks.length && count(board.tasks.length, 'task')].filter(Boolean).join(' and ');
-    const columns = JSON.stringify(board.columns) !== JSON.stringify(emptyBoard().columns) && 'reset the columns to To do, Doing and Done';
-    const what = [items && `permanently delete ${items}`, columns].filter(Boolean).join(', and ');
-    confirmation = {
-      title: 'Start over with an empty board?',
-      message: `${what[0].toUpperCase()}${what.slice(1)}? This cannot be undone.`,
-      action: 'Start over',
-      run: async () => {
-        // Leave a project's page first, as deleting a project does, so it never shows empty.
-        const before = { view, projectId };
-        switchView('all');
-        if (!(await commit(() => emptyBoard()))) [view, projectId] = [before.view, before.projectId];
-      },
-    };
-  }
   function askClearToday() {
     const count = board.tasks.filter(t => t.today).length;
     if (!count || storageBlocked) return;
@@ -265,7 +228,7 @@
       <button aria-label="All work" class:active={view === 'all' && !projectId} aria-current={view === 'all' && !projectId ? 'page' : undefined} onclick={() => switchView('all')}><Icon name="board" size={16}/><span>All work</span></button>
       <button aria-label="Today" class:active={view === 'today'} aria-current={view === 'today' ? 'page' : undefined} onclick={() => switchView('today')}><Icon name="sun" size={16}/><span>Today</span></button>
     </nav>
-    <div class="projects-header"><span>Projects</span></div>
+    <div class="projects-header"><span>Projects</span>{#if !storageBlocked}<button class="icon-button projects-add" aria-label="New project" title="New project" onclick={newProject}><Icon name="plus" size={14}/></button>{/if}</div>
     <nav class="project-nav" aria-label="Projects">
       {#each board.projects as project}<button class="project-link" class:active={projectId === project.id} aria-current={projectId === project.id ? 'page' : undefined} onclick={() => openProject(project.id)}><span class="project-dot" style={`background: ${projectColor(project.color)}`}></span><span class="project-name">{project.name}</span></button>{/each}
     </nav>
@@ -274,7 +237,7 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div class="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" aria-controls="project-sidebar" aria-valuemin={sidebarRange.min} aria-valuemax={sidebarRange.max} aria-valuenow={sidebarWidth} tabindex="0" onpointerdown={startSidebarResize} onpointermove={resizeSidebar} onpointerup={finishSidebarResize} onpointercancel={finishSidebarResize} onlostpointercapture={finishSidebarResize} onkeydown={sidebarKey}></div>
   <main>
-    <header class="page-heading"><h1>{projectId ? board.projects.find(p => p.id === projectId)?.name : view === 'all' ? 'All work' : 'Today'}</h1>{#if projectId}<div class="board-actions"><button onclick={() => openPanel({ kind: 'project', id: projectId })}>Rename</button><button class="danger-button" onclick={() => askDeleteProject(projectId!)}>Delete project</button></div>{/if}</header>
+    <header class="page-heading"><h1>{projectId ? board.projects.find(p => p.id === projectId)?.name : view === 'all' ? 'All work' : 'Today'}</h1>{#if !storageBlocked}<div class="board-actions"><button class="new-task-button" onclick={newTask}><Icon name="plus" size={15}/>New task</button>{#if projectId}<button onclick={() => openPanel({ kind: 'project', id: projectId })}>Rename</button><button class="danger-button" onclick={() => askDeleteProject(projectId!)}>Delete project</button>{/if}</div>{/if}</header>
     {#if saveError}<div class="save-error" role="alert">{saveError}</div>{/if}
     {#if nativeError}<div class="save-error" role="alert">{nativeError}</div>{/if}
     {#if !storageBlocked}<BoardView {board} {view} {projectId} onopen={openTask} ontoday={(id) => void commit(b => toggleToday(b, id))} ondelete={(id) => askDelete([id])} oncollapse={(ids) => void commit(b => setCollapsed(b, ids))} onmove={move}/>{/if}
@@ -297,19 +260,23 @@
 {/if}
 {#if panel?.kind === 'palette'}
   {#key panel}
-    <TaskPalette {commands} prompt={panel.prompt} recent={recentCommands} onchoose={chooseCommand}
+    <TaskPalette {commands} recent={recentCommands} onchoose={chooseCommand}
       onrun={(run) => { void runCommand(run); }} onclose={() => closePanel('palette')}/>
   {/key}
 {/if}
 {#if taskCreationOpen && board.projects.length}
-  <NewTaskDialog projects={board.projects} initialProject={projectId ?? board.projects[0].id}
-    today={view === 'today'} {saveError} ondirty={(dirty) => draftDirty = dirty} onadd={add}
-    onclose={() => closePanel('new-task')}/>
+  {#key panel}
+    <NewTaskDialog projects={board.projects} initialProject={projectId ?? board.projects[0].id}
+      today={view === 'today'} {saveError} ondirty={(dirty) => draftDirty = dirty} onadd={add}
+      onclose={() => closePanel('new-task')}/>
+  {/key}
 {/if}
 {#if projectDialog}
-  <ProjectDialog project={dialogProject}
-    {saveError} ondirty={(dirty) => draftDirty = dirty} onsave={saveProjectDetails}
-    onclose={() => closePanel('project')}/>
+  {#key panel}
+    <ProjectDialog project={dialogProject}
+      {saveError} ondirty={(dirty) => draftDirty = dirty} onsave={saveProjectDetails}
+      onclose={() => closePanel('project')}/>
+  {/key}
 {/if}
 {#if confirmation}
   <ConfirmDialog title={confirmation.title} message={confirmation.message} action={confirmation.action}

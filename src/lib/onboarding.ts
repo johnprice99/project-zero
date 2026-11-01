@@ -1,13 +1,13 @@
 import { emptyBoard, type Board, type Status } from './model.ts';
 
 // What a new install opens with: one project whose tasks show how Project Zero works.
-// Start over removes it.
+// Deleting the project leaves an empty board.
 export function onboardingBoard(): Board {
   const rows: [Status, string, string, boolean][] = [
     [
       'todo',
       'Open the command palette with ⇧⌘P',
-      'Everything is in the palette. Type a few letters, like “new task”, and press Return.',
+      'Commands you’d look up by name are there. Type a few letters, like “today”, and press Return.',
       false,
     ],
     [
@@ -23,11 +23,16 @@ export function onboardingBoard(): Board {
       false,
     ],
     ['todo', 'Edit this task', 'Click the pencil to change its title or description, or to mark it blocked.', false],
-    ['todo', 'Add your first project', '⇧⌘P, then New project. Projects are the rows on the board.', false],
     [
       'todo',
-      "Start over when you're ready",
-      '⇧⌘P, then Start over with an empty board, deletes every project and task, this one included.',
+      'Add your first project and task',
+      'Press + beside Projects in the sidebar (⇧⌘N), then New task at the top (⌘N). Projects are the rows on the board.',
+      false,
+    ],
+    [
+      'todo',
+      "Delete this project when you're done",
+      'Open it from the sidebar and choose Delete project, or press ⇧⌘P, then Delete project. Its tasks go with it.',
       false,
     ],
     [

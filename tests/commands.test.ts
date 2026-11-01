@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { filterCommands, orderByRecent, rememberRecent, score, type Command } from '../src/lib/commands.ts';
 import { buildCommands, type CommandActions } from '../src/lib/command-registry.ts';
 import { sampleBoard } from './sample.ts';
-import { addColumn, emptyBoard } from '../src/lib/model.ts';
+import { emptyBoard } from '../src/lib/model.ts';
 function registry() {
   const calls: { action: string; args: unknown[] }[] = [];
   const actions = new Proxy({} as CommandActions, {
@@ -27,14 +27,6 @@ test('matching is fuzzy and prefers word starts and runs of letters', () => {
   assert.equal(filterCommands(commands, 'gtod')[0].id, 'today');
   assert.equal(filterCommands(commands, 'settings')[0].id, 'settings');
 });
-test('choosing a task and then a destination dispatches the move', () => {
-  const { commands, calls } = registry();
-  const task = filterCommands(child(commands, 'move-column'), 'homepage')[0];
-  assert.equal(task.id, 'move-sample-4');
-  assert.match(task.placeholder!, /Move “Build the homepage layout” to/);
-  filterCommands(task.children!, 'done')[0].run!();
-  assert.deepEqual(calls, [{ action: 'moveColumn', args: ['sample-4', 'done'] }]);
-});
 test('appearance choices are listed by name with a tick on the current one', () => {
   const { commands, calls } = registry();
   const dark = filterCommands(commands, 'appearance dark')[0];
@@ -44,10 +36,10 @@ test('appearance choices are listed by name with a tick on the current one', () 
   dark.run!();
   assert.deepEqual(calls[0], { action: 'theme', args: ['dark'] });
 });
-test('task names are matched within a list', () => {
+test('project names are matched within a list', () => {
   const { commands, calls } = registry();
-  filterCommands(child(commands, 'edit-task'), 'Sketch the Today view')[0].run!();
-  assert.deepEqual(calls[0], { action: 'editTask', args: ['sample-1'] });
+  filterCommands(child(commands, 'projects'), 'website')[0].run!();
+  assert.deepEqual(calls[0], { action: 'project', args: ['web'] });
 });
 test('recently used commands come first, most recent first, up to eight', () => {
   const { commands } = registry();
@@ -63,41 +55,21 @@ test('recently used commands come first, most recent first, up to eight', () => 
   for (let i = 0; i < 10; i++) recent = rememberRecent(recent, `c${i}`);
   assert.equal(recent.length, 8);
 });
-test('core column removal and editing Done tasks are unavailable in the palette', () => {
-  const { commands, actions } = registry();
-  assert.equal(
-    commands.some(c => c.id === 'remove-column'),
-    false,
-  );
-  assert.equal(
-    commands.find(c => c.id === 'edit-task')!.children!.some(c => c.id === 'edit-sample-3'),
-    false,
-  );
-  const custom = buildCommands(addColumn(sampleBoard(), 'Review'), 'all', null, actions).find(c => c.id === 'remove-column')!;
-  assert.deepEqual(
-    custom.children!.map(c => c.label),
-    ['Review'],
-  );
-});
 test('destructive commands dispatch to confirmation actions', () => {
   const { commands, calls } = registry();
-  const deletion = commands.find(c => c.id === 'delete')!.children![0];
-  deletion.run!();
+  child(commands, 'delete-project')[0].run!();
   commands.find(c => c.id === 'clear-today')!.run!();
   assert.deepEqual(
     calls.map(c => c.action),
-    ['deleteTask', 'clearToday'],
+    ['deleteProject', 'clearToday'],
   );
 });
 
-test('a one-project board has no unusable task-to-project command branches', () => {
-  const { actions } = registry();
-  const board = sampleBoard();
-  board.projects = board.projects.slice(0, 1);
-  board.tasks = board.tasks.filter(task => task.projectId === board.projects[0].id);
-  const commands = buildCommands(board, 'all', null, actions);
+test('no command is a dead end, even on an empty board', () => {
+  const { actions, commands } = registry();
+  const empty = buildCommands(emptyBoard(), 'all', null, actions);
   assert.equal(
-    commands.some(command => command.id === 'move-project'),
+    empty.some(command => command.id === 'projects'),
     false,
   );
   function check(items: Command[]) {
@@ -107,6 +79,37 @@ test('a one-project board has no unusable task-to-project command branches', () 
     }
   }
   check(commands);
+  check(empty);
+});
+
+// What you'd look up by name. Anything aimed at one task card is done on the card, and
+// columns are changed in Settings.
+test('the palette lists board-wide commands, not actions on single tasks', () => {
+  const { commands } = registry();
+  assert.deepEqual(
+    commands.map(c => c.label),
+    [
+      'New task',
+      'New project',
+      'Go to All work',
+      'Go to Today',
+      'Go to project…',
+      'Rename project…',
+      'Delete project…',
+      'Collapse all projects',
+      'Expand all projects',
+      'Open Settings',
+      'Appearance: System',
+      'Appearance: Light',
+      'Appearance: Dark',
+      'About Project Zero',
+      'Check for Updates…',
+      'Project Zero Website',
+      'Report a Problem',
+      "Clear today's work",
+      'Clear all completed tasks',
+    ],
+  );
 });
 
 test('clear all completed tasks is always offered, and the view-only version only when it clears less', () => {
@@ -128,17 +131,5 @@ test('help commands are listed', () => {
   assert.deepEqual(
     commands.filter(c => c.group === 'Help').map(c => c.label),
     ['About Project Zero', 'Check for Updates…', 'Project Zero Website', 'Report a Problem'],
-  );
-});
-
-test('start over is offered only when there is something to clear', () => {
-  const { actions, calls, commands } = registry();
-  const startOver = commands.find(c => c.id === 'start-over')!;
-  assert.equal(startOver.label, 'Start over with an empty board…');
-  startOver.run!();
-  assert.deepEqual(calls.at(-1), { action: 'startOver', args: [] });
-  assert.equal(
-    buildCommands(emptyBoard(), 'all', null, actions).some(c => c.id === 'start-over'),
-    false,
   );
 });

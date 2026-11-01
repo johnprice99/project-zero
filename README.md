@@ -3,17 +3,19 @@
 A clear view of what's next. A small to-do board for your Mac that works like a paper list: see current work at a glance, add tasks quickly, and keep them in the order they matter.
 
 - One board. Each project is a row of **To do**, **Doing** and **Done**. Click a project's heading to collapse it, or use Collapse / Expand all projects in the palette; the choice is remembered.
-- Order is priority: drag a card up or down to reorder it, or across to change its column. There is no priority field and no completion checkbox.
-- Projects are in the sidebar. Open one at a time; **All work** shows every project. A project's heading has **Rename** (its name, and a colour from eight presets or a custom one) and **Delete project**, which permanently deletes its tasks after asking.
+- Order is priority: drag a card up or down to reorder it, across to change its column, or onto another project's row in All work to move it there. There is no priority field and no completion checkbox.
+- **New task** at the top of the board (⌘N) asks for a title and a project, with the project you're looking at already chosen (with no projects yet, it opens New project instead); on Today the task is also added to today's work. The **+** beside Projects in the sidebar (⇧⌘N) adds a project. New tasks start in To do.
+- Projects are in the sidebar. Open one at a time; **All work** shows every project, including ones with no tasks yet. A project's heading has **Rename** (its name, and a colour from eight presets or a custom one) and **Delete project**, which permanently deletes its tasks after asking.
 - **Today**: choose tasks from any project with **Add to today's work**. They stay in their project and column. Today shows them in status columns with their project's name and keeps its own order. Tasks stay in Today, finished ones in its Done column, until you remove them or **Clear today's work** (palette, after asking), which leaves the tasks themselves unchanged.
-- **Blocked** is a flag on a task, set in its editor or the palette. It doesn't change the task's column, order or Today; finishing the task clears it. Put the reason in the description.
-- A task has a title, a description and the blocked flag. **Save** applies your edits; Close or Escape discards them. Delete is in the editor and asks first. Finished cards show only Delete.
-- Columns: rename them or add one in Settings or the palette; new columns go before Done. To do, Doing and Done can't be removed, even when renamed. Removing another column asks where its tasks go.
+- **Blocked** is a flag on a task, set in its editor. It doesn't change the task's column, order or Today; finishing the task clears it. Put the reason in the description.
+- A task has a title, a description and the blocked flag. **Save** applies your edits; Close or Escape discards them. Delete is in the editor and asks first. Finished cards show Delete, and Remove from today's work while they're in Today.
+- Columns: rename them or add one in Settings; new columns go before Done. To do, Doing and Done can't be removed, even when renamed. Removing another column asks where its tasks go.
 - **Clear all completed tasks** deletes every finished task; **Clear completed tasks in this view** deletes those in the current project or Today. Both ask first. Deleting is permanent: there is no archive or undo.
-- A new install opens with one project, **Onboard to Project Zero**, whose tasks show how everything works. **Start over with an empty board…** (palette, after asking) deletes every project and task and resets the columns; appearance, sidebar width and recent commands stay.
+- A new install opens with one project, **Onboard to Project Zero**, whose tasks show how everything works. Delete it when you're done.
 - Settings (in the palette): appearance (System, Light or Dark) and columns. Drag the sidebar's edge to resize it.
+- The window opens maximised the first time, then reopens however you left it: its size and position, maximised, or full screen.
 - Every change is saved the moment you make it, and the file is never left half written. See [Storage](#storage).
-- The command palette (⇧⌘P) lists only what you can do right now, your recently used commands first. See [Keys](#keys).
+- The command palette (⇧⌘P) lists only what you can do right now, your recently used commands first. It's for what you'd look up by name; anything aimed at one task (editing, moving, reordering, Today, blocked, deleting) is done on the card itself, so tasks need the mouse or trackpad. See [Keys](#keys).
 - Project Zero › **Check for Updates…** asks GitHub for the newest release and, if there is one, offers **Install and Restart**: it downloads it, checks it's genuine (signed with the developer's key), saves your board, and restarts into it. Release builds also check quietly once a day. If it can't replace itself (e.g. it's running from the disk image), it offers the download instead.
 - Project Zero › **About Project Zero**; Help › the website and **Report a Problem**. Help also searches the menus.
 
@@ -26,7 +28,7 @@ npm run dist         # a release (disk image and signed update), in dist/
 
 Building needs Node.js 22.18 or later, Rust, and the Xcode Command Line Tools. The app needs an Apple silicon Mac with macOS 11 or later, and nothing else: no account, no internet connection.
 
-To install a build, quit Project Zero, then:
+To try a build before releasing it, quit Project Zero, then `npm run tauri build` and `open "src-tauri/target/release/bundle/macos/Project Zero.app"`. It's the real app with your real board, just not installed. To install a build instead, quit Project Zero, then:
 
 ```sh
 rm -rf "/Applications/Project Zero.app" && ditto "src-tauri/target/release/bundle/macos/Project Zero.app" "/Applications/Project Zero.app"
@@ -81,7 +83,7 @@ The app icon was made with Icon Composer, like Typr's, and compiled with Xcode's
 
 ## Keys
 
-Everything is in the command palette (⇧⌘P). Type to filter: the letters must appear in order, and word starts rank higher. Commands ending in “…” open a second list, such as the tasks to move and then the column. Add column and Rename column ask for the name in the palette itself.
+Commands you'd look up by name are in the command palette (⇧⌘P). Type to filter: the letters must appear in order, and word starts rank higher. Commands ending in “…” open a second list, such as the projects to go to.
 
 |          |                                                     |
 | -------- | --------------------------------------------------- |
@@ -89,6 +91,7 @@ Everything is in the command palette (⇧⌘P). Type to filter: the letters must
 | ↑ / ↓    | Choose a command (also ⌃N / ⌃P)                     |
 | ↩        | Run it, or open its list                            |
 | Esc      | Close the palette or dialog, or cancel a question   |
+| ⌘N / ⇧⌘N | New task / New project                              |
 | ⌘Q / ⌘W  | Quit / close the window (after saving)              |
 | ⌘M       | Minimise                                            |
 
