@@ -6,7 +6,7 @@
   import TaskEditor from './components/TaskEditor.svelte';
   import Icon from './components/Icon.svelte';
   import Settings from './components/Settings.svelte';
-  import { bindNativeMenus } from './lib/native';
+  import { bindExitFlush, bindNativeMenus, createAppStore } from './lib/native';
   import NewTaskDialog from './components/NewTaskDialog.svelte';
   import TextPrompt from './components/TextPrompt.svelte';
   import { readSidebarWidth, writeSidebarWidth, clampSidebarWidth, sidebarRange } from './lib/preferences';
@@ -14,133 +14,200 @@
   import TaskPalette from './components/TaskPalette.svelte';
   import { emptyBoard, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Status, type View } from './lib/model';
   import { sampleBoard } from './lib/sample';
-  import { readBoard, writeBoard, exportBoard } from './lib/storage';
+  import { readableError } from './lib/codec';
+  import { ConflictError, type BackupInfo } from './lib/storage';
   import { readTheme, applyTheme, type Theme } from './lib/theme';
+
+  // One dialog at a time; a confirmation can appear above it.
+  type Panel =
+    | { kind: 'palette' } | { kind: 'settings' } | { kind: 'new-task' }
+    | { kind: 'task'; id: string } | { kind: 'project'; id: string | null } | { kind: 'column'; id: string | null };
+  const store = createAppStore();
   let board = $state<Board>(emptyBoard());
   let view = $state<View>('all');
   let projectId = $state<string | null>(null);
-  let paletteOpen = $state(false);
-  let taskCreationOpen = $state(false);
-  let columnPrompt = $state<{ id: string | null } | null>(null);
+  let panel = $state<Panel | null>(null);
   let confirmation = $state<{ title: string; message: string; action: string; run: () => void } | null>(null);
-  let settingsOpen = $state(false);
-  let selectedId = $state<string | null>(null);
   let theme = $state<Theme>(readTheme());
   let saveError = $state('');
   let nativeError = $state('');
   let draftDirty = $state(false);
   let storageBlocked = $state(false);
-  let projectDialog = $state<{ id: string | null } | null>(null);
   let ready = $state(false);
+  let backups = $state<BackupInfo[]>([]);
   let sidebarWidth = $state(readSidebarWidth());
   let resizingSidebar = $state(false);
+  let paletteOpen = $derived(panel?.kind === 'palette');
+  let settingsOpen = $derived(panel?.kind === 'settings');
+  let taskCreationOpen = $derived(panel?.kind === 'new-task');
+  let projectDialog = $derived(panel?.kind === 'project' ? panel : null);
+  let columnPrompt = $derived(panel?.kind === 'column' ? panel : null);
+  let selectedId = $derived(panel?.kind === 'task' ? panel.id : null);
   let selected = $derived(board.tasks.find(t => t.id === selectedId));
+
+  function openPanel(next: Panel | null) { panel = next; draftDirty = false; }
+  // Ignores a late close event from a dialog that has already been replaced.
+  function closePanel(kind: Panel['kind']) { if (panel?.kind === kind) openPanel(null); }
+  function closeTask() { closePanel('task'); }
+
+  function blockStorage(error: unknown) {
+    saveError = `${readableError(error, 'Local storage is unavailable.')} Editing is paused to protect your saved board.`;
+    storageBlocked = true;
+  }
+  async function start() {
+    try {
+      const loaded = await store.load();
+      const next = loaded.board ?? sampleBoard();
+      // New, imported, or upgraded boards are saved straight away. The desktop app backs up
+      // the previous file before the first save of each session.
+      if (loaded.source !== 'saved') await store.save(next);
+      board = next;
+    } catch (error) { blockStorage(error); }
+    ready = true;
+  }
   onMount(() => {
     applyTheme(theme);
-    try { board = readBoard() ?? sampleBoard(); writeBoard(board); }
-    catch (e) { saveError = `${e instanceof Error ? e.message : 'Local storage is unavailable.'} Editing is paused to protect your saved draft.`; storageBlocked = true; }
-    ready = true;
+    void start();
     const preference = matchMedia('(prefers-color-scheme: dark)');
     const syncAppearance = () => applyTheme(theme);
     preference.addEventListener('change', syncAppearance);
     let disposed = false;
-    let cleanupMenus = () => {};
-    void bindNativeMenus(openPalette).then(cleanup => { if (disposed) cleanup(); else cleanupMenus = cleanup; }).catch(() => { nativeError = 'Mac menu shortcuts could not be connected. Try Cmd+Shift+P in this window.'; });
-    return () => { disposed = true; cleanupMenus(); preference.removeEventListener('change', syncAppearance); };
+    const cleanups: (() => void)[] = [];
+    const keep = (cleanup: () => void) => { if (disposed) cleanup(); else cleanups.push(cleanup); };
+    void bindNativeMenus(openPalette).then(keep).catch(() => { nativeError = 'Mac menu shortcuts could not be connected. Try Cmd+Shift+P in this window.'; });
+    void bindExitFlush(() => store.flush()).then(keep).catch(error => console.error('Saving before quit is unavailable.', error));
+    return () => { disposed = true; cleanups.forEach(cleanup => cleanup()); preference.removeEventListener('change', syncAppearance); };
   });
   $effect(() => { applyTheme(theme); });
   $effect(() => { const width = sidebarWidth; if (!resizingSidebar) { try { writeSidebarWidth(width); } catch { /* Width still applies for this session. */ } } });
-  // Publish changes to the UI only after storage accepts them. Dialog drafts stay open on failure.
-  function commit(next: Board): boolean {
+
+  // Changes appear immediately and are saved in order. A failed save returns the board
+  // to its last saved state; dialogs stay open with their draft so it can be retried.
+  async function commit(change: (current: Board) => Board): Promise<boolean> {
     if (storageBlocked) return false;
+    const next = change(board);
+    if (next === board) return false;
+    board = next;
     try {
-      writeBoard(next);
-      board = next;
+      await store.save(next);
       saveError = '';
       return true;
     } catch (error) {
-      saveError = error instanceof Error ? error.message : 'Your changes could not be saved. Try again.';
+      board = store.saved() ?? board;
+      saveError = readableError(error, 'Your changes could not be saved. Try again.');
+      if (error instanceof ConflictError) await reloadAfterConflict();
       return false;
     }
   }
-  function add(title: string, project: string) {
-    if (storageBlocked) return false;
-    const next = addTask(board, title, project, view);
-    return next !== board && commit(next);
+  async function reloadAfterConflict() {
+    try {
+      const loaded = await store.load();
+      if (loaded.board) board = loaded.board;
+      saveError = 'This board was changed in another window. The latest saved version has been loaded; your last change was not saved.';
+    } catch (error) { blockStorage(error); }
   }
-  function saveColumnName(id: string, name: string): boolean {
+  function add(title: string, project: string) {
+    return commit(b => addTask(b, title, project, view));
+  }
+  async function saveColumnName(id: string, name: string): Promise<boolean> {
     const column = board.columns.find(column => column.id === id);
     if (storageBlocked || !column) return false;
     if (column.name === name.trim()) return true;
-    const next = renameColumn(board, id, name);
-    return next !== board && commit(next);
+    return commit(b => renameColumn(b, id, name));
   }
-  function createColumn(name: string): boolean {
-    const next = addColumn(board, name);
-    return next !== board && commit(next);
+  function createColumn(name: string) {
+    return commit(b => addColumn(b, name));
   }
-  function savePromptColumn(name: string): boolean {
+  function savePromptColumn(name: string) {
     return columnPrompt?.id ? saveColumnName(columnPrompt.id, name) : createColumn(name);
   }
-  function removeBoardColumn(id: string, destination: string): boolean {
-    const next = removeColumn(board, id, destination);
-    return next !== board && commit(next);
+  function removeBoardColumn(id: string, destination: string) {
+    return commit(b => removeColumn(b, id, destination));
   }
-  function saveTask(patch: TaskPatch): boolean {
-    return selectedId !== null && commit(patchTask(board, selectedId, patch));
+  function saveTask(patch: TaskPatch) {
+    const id = selectedId;
+    return id === null ? Promise.resolve(false) : commit(b => patchTask(b, id, patch));
   }
-  function saveProjectDetails(name: string, color: string): boolean {
+  async function saveProjectDetails(name: string, color: string): Promise<boolean> {
     if (!projectDialog) return false;
-    const creating = projectDialog.id === null;
-    const next = saveProject(board, projectDialog.id, name, color);
-    if (next === board || !commit(next)) return false;
-    if (creating) openProject(next.projects.at(-1)!.id);
+    const id = projectDialog.id;
+    const before = board.projects.length;
+    if (!(await commit(b => saveProject(b, id, name, color)))) return false;
+    if (id === null && board.projects.length > before) openProject(board.projects.at(-1)!.id);
     return true;
   }
-  function move(id: string, status: Status, project?: string, before?: string) { commit(moveTask(board, id, status, view, project, before)); }
-  function switchView(next: View) { view = next; projectId = null; selectedId = null; }
-  function openProject(id: string) { view = 'all'; projectId = id; selectedId = null; }
+  function move(id: string, status: Status, project?: string, before?: string) { void commit(b => moveTask(b, id, status, view, project, before)); }
+  function switchView(next: View) { view = next; projectId = null; closeTask(); }
+  function openProject(id: string) { view = 'all'; projectId = id; closeTask(); }
   function newTask() {
     if (storageBlocked || confirmation) return;
-    closePanels();
-    if (!board.projects.length) projectDialog = { id: null };
-    else taskCreationOpen = true;
+    openPanel(board.projects.length ? { kind: 'new-task' } : { kind: 'project', id: null });
   }
-  function openSettings() { if (confirmation) return; closePanels(); paletteOpen = false; settingsOpen = true; }
-  function closePanels() { draftDirty = false; selectedId = null; settingsOpen = false; projectDialog = null; taskCreationOpen = false; columnPrompt = null; }
+  function openSettings() { if (confirmation) return; openPanel({ kind: 'settings' }); }
   function openPalette() {
     if (confirmation || paletteOpen) return;
-    const open = () => { closePanels(); paletteOpen = true; };
+    void store.listBackups().then(list => backups = list, () => backups = []);
+    const open = () => openPanel({ kind: 'palette' });
     if (draftDirty) {
       confirmation = { title: 'Discard unsaved changes?', message: 'Your edits have not been saved. Discard them and open the command palette?', action: 'Discard changes', run: open };
     } else open();
   }
-  async function runCommand(run: () => void) { paletteOpen = false; await tick(); run(); }
+  async function runCommand(run: () => void) { closePanel('palette'); await tick(); run(); }
   function requestColumnRemoval(id: string, destination: string) {
-    confirmation = { title: 'Remove column?', message: `Move tasks from “${board.columns.find(c => c.id === id)?.name}” to “${board.columns.find(c => c.id === destination)?.name}” and remove the column?`, action: 'Remove column', run: () => commit(removeColumn(board, id, destination)) };
+    confirmation = { title: 'Remove column?', message: `Move tasks from “${board.columns.find(c => c.id === id)?.name}” to “${board.columns.find(c => c.id === destination)?.name}” and remove the column?`, action: 'Remove column', run: () => void commit(b => removeColumn(b, id, destination)) };
+  }
+  async function exportTasks() {
+    const saved = store.saved();
+    if (!saved) return;
+    try { await store.exportFile(saved); }
+    catch (error) { saveError = readableError(error, 'The tasks could not be exported.'); }
+  }
+  async function askRestore(read: () => Promise<Board | null>, source: string) {
+    let restored: Board | null;
+    try { restored = await read(); }
+    catch (error) { saveError = readableError(error, 'That file could not be read.'); return; }
+    if (!restored) return;
+    const next = restored;
+    confirmation = {
+      title: 'Replace the board?',
+      message: `Replace the current board with ${source} (${next.projects.length} projects, ${next.tasks.length} tasks)? A backup of the current board is kept.`,
+      action: 'Replace board',
+      run: () => void restore(next),
+    };
+  }
+  async function restore(next: Board) {
+    try {
+      await store.replace(next);
+      board = next;
+      storageBlocked = false;
+      saveError = '';
+      switchView('all');
+    } catch (error) { saveError = readableError(error, 'The board could not be restored.'); }
   }
   let allCommands = $derived(buildCommands(board, view, projectId, {
-    newTask, newProject: () => projectDialog = { id: null }, editProject: (id) => projectDialog = { id }, deleteProject: askDeleteProject,
+    newTask, newProject: () => openPanel({ kind: 'project', id: null }), editProject: (id) => openPanel({ kind: 'project', id }), deleteProject: askDeleteProject,
     project: openProject, all: () => switchView('all'), todayView: () => switchView('today'), settings: openSettings,
     theme: (value) => theme = value,
-    collapse: (ids) => { commit(setCollapsed(board, ids)); switchView('all'); },
-    editTask: (id) => selectedId = id,
-    moveColumn: (id, column) => commit(moveTask(board, id, column, 'all')),
-    moveProject: (id, project) => { const task = board.tasks.find(t => t.id === id); if (task) commit(moveTask(board, id, task.status, 'all', project)); },
-    priority: (id, direction) => commit(reorderTask(board, id, direction, view)),
-    toggleToday: (id) => commit(toggleToday(board, id)),
-    toggleBlocked: (id) => { const task = board.tasks.find(t => t.id === id); if (task) commit(patchTask(board, id, { blocked: !task.blocked })); },
+    collapse: (ids) => { void commit(b => setCollapsed(b, ids)); switchView('all'); },
+    editTask: (id) => openPanel({ kind: 'task', id }),
+    moveColumn: (id, column) => void commit(b => moveTask(b, id, column, 'all')),
+    moveProject: (id, project) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? moveTask(b, id, task.status, 'all', project) : b; }),
+    priority: (id, direction) => void commit(b => reorderTask(b, id, direction, view)),
+    toggleToday: (id) => void commit(b => toggleToday(b, id)),
+    toggleBlocked: (id) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? patchTask(b, id, { blocked: !task.blocked }) : b; }),
     deleteTask: (id) => askDelete([id]),
     clearDone, clearToday: askClearToday,
-    addColumn: () => columnPrompt = { id: null }, renameColumn: (id) => columnPrompt = { id },
-    removeColumn: requestColumnRemoval, export: () => exportBoard(board),
-  }));
-  let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences') : allCommands);
+    addColumn: () => openPanel({ kind: 'column', id: null }), renameColumn: (id) => openPanel({ kind: 'column', id }),
+    removeColumn: requestColumnRemoval, export: () => void exportTasks(),
+    restoreFile: () => void askRestore(() => store.importFile(), 'this file'),
+    restoreBackup: (id) => void askRestore(() => store.readBackup(id), 'this backup'),
+  }, backups));
+  let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.id.startsWith('restore-')) : allCommands);
   function askDeleteProject(id: string) {
     const project = board.projects.find(p => p.id === id);
     if (!project || storageBlocked) return;
     const count = board.tasks.filter(t => t.projectId === id).length;
-    confirmation = { title: 'Delete project?', message: `Permanently delete “${project.name}” and all ${count} of its tasks? This cannot be undone.`, action: 'Delete project', run: () => { if (!commit(deleteProject(board, id))) return; switchView('all'); projectDialog = null; } };
+    confirmation = { title: 'Delete project?', message: `Permanently delete “${project.name}” and all ${count} of its tasks? This cannot be undone.`, action: 'Delete project', run: async () => { if (!(await commit(b => deleteProject(b, id)))) return; switchView('all'); closePanel('project'); } };
   }
   function startSidebarResize(e: PointerEvent) {
     e.preventDefault();
@@ -157,15 +224,16 @@
   }
   function askDelete(ids: string[]) {
     if (storageBlocked || !ids.length) return;
-    confirmation = { title: ids.length === 1 ? 'Delete task?' : 'Clear completed tasks?', message: ids.length === 1 ? `Permanently delete “${board.tasks.find(t => t.id === ids[0])?.title}”? This cannot be undone.` : `Permanently delete these ${ids.length} completed tasks from this view? This cannot be undone.`, action: ids.length === 1 ? 'Delete task' : 'Clear completed tasks', run: () => { if (!commit(deleteTasks(board, ids))) return; if (ids.includes(selectedId ?? '')) selectedId = null; } };
+    confirmation = { title: ids.length === 1 ? 'Delete task?' : 'Clear completed tasks?', message: ids.length === 1 ? `Permanently delete “${board.tasks.find(t => t.id === ids[0])?.title}”? This cannot be undone.` : `Permanently delete these ${ids.length} completed tasks from this view? This cannot be undone.`, action: ids.length === 1 ? 'Delete task' : 'Clear completed tasks', run: async () => { if (!(await commit(b => deleteTasks(b, ids)))) return; if (ids.includes(selectedId ?? '')) closeTask(); } };
   }
   function clearDone() { askDelete(board.tasks.filter(t => t.status === board.completedColumnId && (!projectId || t.projectId === projectId) && (view !== 'today' || t.today)).map(t => t.id)); }
   function askClearToday() {
     const count = board.tasks.filter(t => t.today).length;
     if (!count || storageBlocked) return;
-    paletteOpen = false;
-    confirmation = { title: "Clear today's work?", message: `Remove all ${count} tasks from today's selection? Their projects, columns, and priority order will stay the same.`, action: "Clear today's work", run: () => commit(clearToday(board)) };
+    closePanel('palette');
+    confirmation = { title: "Clear today's work?", message: `Remove all ${count} tasks from today's selection? Their projects, columns, and priority order will stay the same.`, action: "Clear today's work", run: () => void commit(clearToday) };
   }
+  function openTask(id: string) { if (board.tasks.find(t => t.id === id)?.status !== board.completedColumnId) openPanel({ kind: 'task', id }); }
   function keyboard(e: KeyboardEvent) {
     if (confirmation || !(e.metaKey || e.ctrlKey) || e.altKey) return;
     if (e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); openPalette(); return; }
@@ -188,43 +256,43 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div class="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" aria-controls="project-sidebar" aria-valuemin={sidebarRange.min} aria-valuemax={sidebarRange.max} aria-valuenow={sidebarWidth} tabindex="0" onpointerdown={startSidebarResize} onpointermove={resizeSidebar} onpointerup={finishSidebarResize} onpointercancel={finishSidebarResize} onlostpointercapture={finishSidebarResize} onkeydown={sidebarKey}></div>
   <main>
-    <header class="page-heading"><h1>{projectId ? board.projects.find(p => p.id === projectId)?.name : view === 'all' ? 'All work' : 'Today'}</h1>{#if projectId}<div class="board-actions"><button onclick={() => projectDialog = { id: projectId }}>Rename</button><button class="danger-button" onclick={() => askDeleteProject(projectId!)}>Delete project</button></div>{/if}</header>
+    <header class="page-heading"><h1>{projectId ? board.projects.find(p => p.id === projectId)?.name : view === 'all' ? 'All work' : 'Today'}</h1>{#if projectId}<div class="board-actions"><button onclick={() => openPanel({ kind: 'project', id: projectId })}>Rename</button><button class="danger-button" onclick={() => askDeleteProject(projectId!)}>Delete project</button></div>{/if}</header>
     {#if saveError}<div class="save-error" role="alert">{saveError}</div>{/if}
     {#if nativeError}<div class="save-error" role="alert">{nativeError}</div>{/if}
-    {#if ready && !storageBlocked}<BoardView {board} {view} {projectId} onopen={(id) => { if (board.tasks.find(t => t.id === id)?.status !== board.completedColumnId) selectedId = id; }} ontoday={(id) => commit(toggleToday(board, id))} ondelete={(id) => askDelete([id])} oncollapse={(ids) => commit(setCollapsed(board, ids))} onmove={move}/>{/if}
+    {#if ready && !storageBlocked}<BoardView {board} {view} {projectId} onopen={openTask} ontoday={(id) => void commit(b => toggleToday(b, id))} ondelete={(id) => askDelete([id])} oncollapse={(ids) => void commit(b => setCollapsed(b, ids))} onmove={move}/>{/if}
 
     <span class="prototype-note">{storageBlocked ? 'Saved board unavailable' : 'Prototype · saved on this device'}</span>
   </main>
 </div>
 {#if settingsOpen}
   <Settings {board} {saveError} {theme} ondirty={(dirty) => draftDirty = dirty} onremove={removeBoardColumn} onrename={saveColumnName}
-    onadd={createColumn} ontheme={(value) => theme = value} onclose={() => { settingsOpen = false; draftDirty = false; }}/>
+    onadd={createColumn} ontheme={(value) => theme = value} onclose={() => closePanel('settings')}/>
 {/if}
 {#if selected}
   {#key selected.id}
     <TaskEditor task={selected} completed={selected.status === board.completedColumnId} {saveError}
       ondirty={(dirty) => draftDirty = dirty} ondelete={() => askDelete([selected!.id])}
-      onsave={saveTask} onclose={() => { selectedId = null; draftDirty = false; }}/>
+      onsave={saveTask} onclose={() => closePanel('task')}/>
   {/key}
 {/if}
 {#if paletteOpen}
-  <TaskPalette {commands} onrun={(run) => { void runCommand(run); }} onclose={() => paletteOpen = false}/>
+  <TaskPalette {commands} onrun={(run) => { void runCommand(run); }} onclose={() => closePanel('palette')}/>
 {/if}
 {#if taskCreationOpen && board.projects.length}
   <NewTaskDialog projects={board.projects} initialProject={projectId ?? board.projects[0].id}
     today={view === 'today'} {saveError} ondirty={(dirty) => draftDirty = dirty} onadd={add}
-    onclose={() => { taskCreationOpen = false; draftDirty = false; }}/>
+    onclose={() => closePanel('new-task')}/>
 {/if}
 {#if columnPrompt}
   <TextPrompt title={columnPrompt.id ? 'Rename column' : 'Add column'}
     initial={board.columns.find(column => column.id === columnPrompt?.id)?.name ?? ''}
     {saveError} ondirty={(dirty) => draftDirty = dirty} onsave={savePromptColumn}
-    onclose={() => { columnPrompt = null; draftDirty = false; }}/>
+    onclose={() => closePanel('column')}/>
 {/if}
 {#if projectDialog}
   <ProjectDialog project={board.projects.find(project => project.id === projectDialog?.id) ?? null}
     {saveError} ondirty={(dirty) => draftDirty = dirty} onsave={saveProjectDetails}
-    onclose={() => { projectDialog = null; draftDirty = false; }}/>
+    onclose={() => closePanel('project')}/>
 {/if}
 {#if confirmation}
   <ConfirmDialog title={confirmation.title} message={confirmation.message} action={confirmation.action}

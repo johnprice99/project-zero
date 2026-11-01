@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deleteProject, projectColors, addTask, reorderTask, clearToday, saveProject, protectedColumn, deleteTasks, setCollapsed, removeColumn, addColumn, renameColumn, lane, moveTask, toggleToday, patchTask } from '../src/lib/model.ts';
-import { decodeBoard } from '../src/lib/codec.ts';
+import { decodeBoard, encodeBoard } from '../src/lib/codec.ts';
 import { sampleBoard } from '../src/lib/sample.ts';
 
 test('Today ordering is independent of project ordering', () => {
@@ -157,14 +157,14 @@ test('deleting a project removes all its tasks while preserving other projects',
   assert.deepEqual(next.collapsedProjects, ['web']);
   assert.deepEqual(next.tasks, original.tasks.filter(t => t.projectId !== 'zero'));
   assert.equal(deleteProject(original, 'missing'), original);
-  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(next))), next);
+  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(encodeBoard(next)))), next);
 });
 test('deleting the last project leaves a valid empty board that can create projects again', () => {
   let board = sampleBoard();
   for (const project of board.projects) board = deleteProject(board, project.id);
   assert.equal(board.tasks.length, 0);
   assert.equal(board.projects.length, 0);
-  const restored = decodeBoard(JSON.parse(JSON.stringify(board)));
+  const restored = decodeBoard(JSON.parse(JSON.stringify(encodeBoard(board))));
   assert.deepEqual(restored, board);
   const next = saveProject(restored, null, 'Fresh project', 'sky');
   assert.equal(next.projects.length, 1);
@@ -173,7 +173,7 @@ test('deleting the last project leaves a valid empty board that can create proje
 test('every preset project colour survives saving and loading', () => {
   for (const preset of projectColors) {
     const board = saveProject(sampleBoard(), 'web', 'Website', preset.id);
-    assert.equal(decodeBoard(JSON.parse(JSON.stringify(board))).projects.find(p => p.id === 'web')!.color, preset.id);
+    assert.equal(decodeBoard(JSON.parse(JSON.stringify(encodeBoard(board)))).projects.find(p => p.id === 'web')!.color, preset.id);
   }
 });
 
@@ -225,6 +225,6 @@ test('mixed drag and keyboard operations preserve task data and unique priority 
         assert.equal(new Set(tasks.map(task => task.order)).size, tasks.length);
       }
     }
-    assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(board))), board);
+    assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(encodeBoard(board)))), board);
   }
 });

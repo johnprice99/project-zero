@@ -1,99 +1,153 @@
-import { defaultColumns, isProjectColor, type Board, type CheckItem, type Column, type Project, type Task } from './model.ts';
+import {
+  coreColumnIds,
+  isProjectColor,
+  limits,
+  type Board,
+  type CheckItem,
+  type Column,
+  type Project,
+  type Task,
+} from './model.ts';
+import { importPrototypeBoard, isPrototypeBoard } from './prototype.ts';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+// The saved board document. Bump SCHEMA and add a migration step when the format changes.
+export const SCHEMA = 1;
+export interface StoredBoard extends Board {
+  schema: typeof SCHEMA;
+}
+type Doc = Record<string, unknown>;
+// migrations[n] upgrades a schema n + 1 document to schema n + 2.
+const migrations: ((doc: Doc) => Doc)[] = [];
+
+export class BoardFormatError extends Error {}
+function fail(path: string, problem: string): never {
+  throw new BoardFormatError(`${path} ${problem}`);
+}
+
+function isRecord(value: unknown): value is Doc {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-function isText(value: unknown, max = Infinity): value is string {
-  return typeof value === 'string' && value.trim().length > 0 && value.length <= max;
-}
-function unique(values: string[]): boolean { return new Set(values).size === values.length; }
-function isProject(value: unknown): value is Project {
-  return isRecord(value) && isText(value.id) && isText(value.name, 80) && isProjectColor(value.color);
-}
-function isColumn(value: unknown): value is Column {
-  return isRecord(value) && isText(value.id) && isText(value.name, 60);
-}
-function isCheckItem(value: unknown): value is CheckItem {
-  return isRecord(value) && isText(value.id) && typeof value.title === 'string' && typeof value.done === 'boolean';
-}
-
-// Early prototypes allowed core columns to be removed. Restore them without introducing
-// a duplicate label (e.g. a custom column may already be called “Doing”).
-function restoreCoreColumns(saved: Column[]): Column[] {
-  const columns = saved.map(column => ({ ...column, name: column.name.trim() }));
-  const names = new Set(columns.map(column => column.name.toLowerCase()));
-  for (const core of defaultColumns) {
-    if (columns.some(column => column.id === core.id)) continue;
-    let name = core.name;
-    let suffix = 1;
-    while (names.has(name.toLowerCase())) {
-      name = `${core.name} (restored${suffix === 1 ? '' : ` ${suffix}`})`;
-      suffix += 1;
-    }
-    names.add(name.toLowerCase());
-    const column = { ...core, name };
-    if (core.id === 'todo') columns.unshift(column);
-    else if (core.id === 'doing') {
-      const done = columns.findIndex(column => column.id === 'done');
-      columns.splice(done < 0 ? columns.length : done, 0, column);
-    } else columns.push(column);
+function text(value: unknown, path: string, max = Infinity): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > max) {
+    fail(path, max === Infinity ? 'must be non-empty text.' : `must be non-empty text of up to ${max} characters.`);
   }
-  return columns;
+  return value;
+}
+function list(value: unknown, path: string): unknown[] {
+  if (!Array.isArray(value)) fail(path, 'must be a list.');
+  return value;
+}
+function record(value: unknown, path: string): Doc {
+  if (!isRecord(value)) fail(path, 'must be an object.');
+  return value;
+}
+function unique(values: string[], path: string, what: string): void {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) fail(path, `contains a duplicate ${what}: “${value}”.`);
+    seen.add(value);
+  }
 }
 
-// Decode unknown data at the storage boundary. Never replace an unreadable board with samples.
-export function decodeBoard(value: unknown): Board {
-  if (!isRecord(value)) throw new Error('Invalid saved board.');
-  const version = value.version;
-  if (typeof version !== 'number' || ![1, 2, 3, 4, 5, 6].includes(version)) throw new Error('Unsupported saved board.');
-  if (!Array.isArray(value.projects) || !value.projects.every(isProject)) throw new Error('Invalid saved projects.');
-  const projects = value.projects;
-  if (!unique(projects.map(project => project.id)) || !unique(projects.map(project => project.name.trim().toLowerCase()))) throw new Error('Duplicate saved projects.');
-  const savedColumns = version >= 3 ? value.columns : defaultColumns;
-  if (!Array.isArray(savedColumns) || !savedColumns.length || !savedColumns.every(isColumn)
-    || !unique(savedColumns.map(column => column.id))
-    || !unique(savedColumns.map(column => column.name.trim().toLowerCase()))) throw new Error('Invalid saved columns.');
-  const columns = restoreCoreColumns(savedColumns);
-  const columnIds = new Set(columns.map(column => column.id));
-  const projectIds = new Set(projects.map(project => project.id));
-  const completedColumnId = version >= 4 ? value.completedColumnId : 'done';
-  if (typeof completedColumnId !== 'string' || !columnIds.has(completedColumnId)) throw new Error('Invalid completed column.');
-  const collapsedProjects = version >= 4 ? value.collapsedProjects : [];
-  if (!Array.isArray(collapsedProjects) || !collapsedProjects.every((id): id is string => typeof id === 'string' && projectIds.has(id))
-    || !unique(collapsedProjects)) throw new Error('Invalid saved preferences.');
-  if (!Array.isArray(value.tasks)) throw new Error('Invalid saved tasks.');
+function project(value: unknown, path: string): Project {
+  const p = record(value, path);
+  const color = p.color;
+  if (!isProjectColor(color)) fail(`${path}.color`, 'must be a preset colour or #rrggbb.');
+  return { id: text(p.id, `${path}.id`), name: text(p.name, `${path}.name`, limits.projectName), color };
+}
+function column(value: unknown, path: string): Column {
+  const c = record(value, path);
+  return { id: text(c.id, `${path}.id`), name: text(c.name, `${path}.name`, limits.columnName) };
+}
+function checkItem(value: unknown, path: string): CheckItem {
+  const c = record(value, path);
+  if (typeof c.title !== 'string') fail(`${path}.title`, 'must be text.');
+  if (typeof c.done !== 'boolean') fail(`${path}.done`, 'must be true or false.');
+  return { id: text(c.id, `${path}.id`), title: c.title, done: c.done };
+}
 
-  const tasks: Task[] = value.tasks.map(value => {
-    if (!isRecord(value) || !isText(value.id) || !isText(value.title, 300)
-      || typeof value.projectId !== 'string' || !projectIds.has(value.projectId)
-      || typeof value.status !== 'string' || !(columnIds.has(value.status) || (version === 1 && value.status === 'blocked'))
-      || typeof value.today !== 'boolean' || !Number.isFinite(value.order) || !Number.isFinite(value.todayOrder)
-      || typeof value.notes !== 'string' || !Array.isArray(value.checklist) || !value.checklist.every(isCheckItem)
-      || (value.blockerReason !== undefined && typeof value.blockerReason !== 'string')
-      || (version !== 1 && (typeof value.blocked !== 'boolean' || (value.status === completedColumnId && value.blocked)))) {
-      throw new Error('Invalid saved tasks.');
-    }
-    const reason = typeof value.blockerReason === 'string' ? value.blockerReason.trim() : '';
-    const notes = reason && !value.notes.includes(reason) ? [value.notes.trim(), reason].filter(Boolean).join('\n\n') : value.notes;
+function validate(doc: Doc): Board {
+  const projects = list(doc.projects, 'projects').map((p, i) => project(p, `projects[${i}]`));
+  unique(projects.map(p => p.id), 'projects', 'id');
+  unique(projects.map(p => p.name.trim().toLowerCase()), 'projects', 'name');
+
+  const columns = list(doc.columns, 'columns').map((c, i) => column(c, `columns[${i}]`));
+  unique(columns.map(c => c.id), 'columns', 'id');
+  unique(columns.map(c => c.name.trim().toLowerCase()), 'columns', 'name');
+  for (const id of coreColumnIds) if (!columns.some(c => c.id === id)) fail('columns', `is missing the core “${id}” column.`);
+  const columnIds = new Set(columns.map(c => c.id));
+  const projectIds = new Set(projects.map(p => p.id));
+
+  const completedColumnId = doc.completedColumnId;
+  if (typeof completedColumnId !== 'string' || !columnIds.has(completedColumnId)) {
+    fail('completedColumnId', 'must name one of the columns.');
+  }
+  const collapsedProjects = list(doc.collapsedProjects, 'collapsedProjects').map((id, i) => {
+    if (typeof id !== 'string' || !projectIds.has(id)) fail(`collapsedProjects[${i}]`, 'must name one of the projects.');
+    return id;
+  });
+  unique(collapsedProjects, 'collapsedProjects', 'project');
+
+  const tasks = list(doc.tasks, 'tasks').map((value, i): Task => {
+    const path = `tasks[${i}]`;
+    const t = record(value, path);
+    const id = text(t.id, `${path}.id`);
+    const title = text(t.title, `${path}.title`, limits.taskTitle);
+    if (typeof t.projectId !== 'string' || !projectIds.has(t.projectId)) fail(`${path}.projectId`, 'must name one of the projects.');
+    if (typeof t.status !== 'string' || !columnIds.has(t.status)) fail(`${path}.status`, 'must name one of the columns.');
+    if (typeof t.blocked !== 'boolean') fail(`${path}.blocked`, 'must be true or false.');
+    if (t.blocked && t.status === completedColumnId) fail(`${path}.blocked`, 'cannot be set on completed work.');
+    if (typeof t.today !== 'boolean') fail(`${path}.today`, 'must be true or false.');
+    if (typeof t.order !== 'number' || !Number.isFinite(t.order)) fail(`${path}.order`, 'must be a number.');
+    if (typeof t.todayOrder !== 'number' || !Number.isFinite(t.todayOrder)) fail(`${path}.todayOrder`, 'must be a number.');
+    if (typeof t.notes !== 'string') fail(`${path}.notes`, 'must be text.');
+    const checklist = list(t.checklist, `${path}.checklist`).map((c, j) => checkItem(c, `${path}.checklist[${j}]`));
     return {
-      id: value.id, title: value.title, projectId: value.projectId,
-      status: version === 1 && value.status === 'blocked' ? 'doing' : value.status,
-      blocked: version === 1 ? value.status === 'blocked' : value.blocked as boolean,
-      today: value.today, order: value.order as number, todayOrder: value.todayOrder as number,
-      notes, checklist: value.checklist.map(item => ({ ...item })),
+      id,
+      title,
+      projectId: t.projectId,
+      status: t.status,
+      blocked: t.blocked,
+      today: t.today,
+      order: t.order,
+      todayOrder: t.todayOrder,
+      notes: t.notes,
+      checklist,
     };
   });
-  if (!unique(tasks.map(task => task.id))) throw new Error('Duplicate saved task identifiers.');
+  unique(tasks.map(t => t.id), 'tasks', 'id');
 
-  if (version === 1) {
-    // Merge the former Blocked lane after Doing, preserving each lane's relative order.
-    const legacyOrder = (a: Task, b: Task) => Number(a.blocked) - Number(b.blocked);
-    for (const project of projects) {
-      tasks.filter(task => task.projectId === project.id && task.status === 'doing')
-        .sort((a, b) => legacyOrder(a, b) || a.order - b.order).forEach((task, index) => task.order = index);
-    }
-    tasks.filter(task => task.today && task.status === 'doing')
-      .sort((a, b) => legacyOrder(a, b) || a.todayOrder - b.todayOrder).forEach((task, index) => task.todayOrder = index);
-  }
-  return { version: 6, projects: projects.map(project => ({ ...project })), completedColumnId, collapsedProjects: [...collapsedProjects], columns, tasks };
+  return { completedColumnId, collapsedProjects, columns, projects, tasks };
+}
+
+export function encodeBoard(board: Board): StoredBoard {
+  return { schema: SCHEMA, ...board };
+}
+
+// Decode a saved board document in the desktop format, applying any schema migrations.
+export function decodeBoard(value: unknown): Board {
+  let doc = record(value, 'Saved board');
+  const schema = doc.schema;
+  if (typeof schema !== 'number' || !Number.isInteger(schema) || schema < 1) fail('schema', 'is missing or invalid.');
+  if (schema > SCHEMA) fail('schema', `${schema} was saved by a newer version of Project Zero.`);
+  for (let version = schema; version < SCHEMA; version++) doc = migrations[version - 1](doc);
+  return validate(doc);
+}
+
+// Accept anything the app can restore from: a saved document, a backup file
+// (which wraps the document with a revision), or a prototype export.
+export function decodeAnyBoard(value: unknown): { board: Board; upgraded: boolean } {
+  const doc = isRecord(value) && isRecord(value.board) && 'revision' in value ? value.board : value;
+  if (isPrototypeBoard(doc)) return { board: importPrototypeBoard(doc), upgraded: true };
+  const schema = isRecord(doc) ? doc.schema : undefined;
+  return { board: decodeBoard(doc), upgraded: schema !== SCHEMA };
+}
+
+export function readableError(error: unknown, fallback: string): string {
+  if (error instanceof BoardFormatError) return `The board file is not valid: ${error.message}`;
+  if (error instanceof SyntaxError) return 'The board file is not valid JSON.';
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error) return error;
+  if (isRecord(error) && typeof error.message === 'string') return error.message;
+  return fallback;
 }

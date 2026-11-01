@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { protectedColumn, type Board } from '../lib/model';
+  import { limits, protectedColumn, type Board } from '../lib/model';
   import type { Theme } from '../lib/theme';
   import RemoveColumnDialog from './RemoveColumnDialog.svelte';
   import Icon from './Icon.svelte';
@@ -7,9 +7,9 @@
   let { theme, board, onremove, onrename, onadd, ontheme, onclose, saveError = '', ondirty }: {
     theme: Theme;
     board: Board;
-    onremove: (id: string, destination: string) => boolean;
-    onrename: (id: string, name: string) => boolean;
-    onadd: (name: string) => boolean;
+    onremove: (id: string, destination: string) => Promise<boolean>;
+    onrename: (id: string, name: string) => Promise<boolean>;
+    onadd: (name: string) => Promise<boolean>;
     ontheme: (theme: Theme) => void;
     onclose: () => void;
     saveError?: string;
@@ -20,16 +20,21 @@
   let newColumn = $state('');
   let columnError = $state('');
   let removing = $state<string | null>(null);
-  const nameError = 'Use a unique column name (up to 60 characters).';
+  const nameError = `Use a unique column name (up to ${limits.columnName} characters).`;
 
-  function add(event: SubmitEvent) {
+  let adding = false;
+  async function add(event: SubmitEvent) {
     event.preventDefault();
-    if (onadd(newColumn)) { newColumn = ''; columnError = ''; }
-    else columnError = nameError;
+    if (adding) return;
+    adding = true;
+    try {
+      if (await onadd(newColumn)) { newColumn = ''; columnError = ''; }
+      else columnError = nameError;
+    } finally { adding = false; }
   }
-  function rename(id: string, input: HTMLInputElement) {
+  async function rename(id: string, input: HTMLInputElement) {
     const name = input.value.trim();
-    if (onrename(id, name)) { input.value = name; columnError = ''; }
+    if (await onrename(id, name)) { input.value = name; columnError = ''; }
     else {
       columnError = nameError;
       input.value = board.columns.find(column => column.id === id)?.name ?? '';
@@ -60,7 +65,7 @@
   <div class="column-settings">
     {#each board.columns as column (column.id)}
       <div class="column-setting">
-        <input aria-label={`Rename ${column.name} column`} maxlength="60" value={column.name}
+        <input aria-label={`Rename ${column.name} column`} maxlength={limits.columnName} value={column.name}
           oninput={() => columnError = ''} onkeydown={finishName} onblur={(event) => rename(column.id, event.currentTarget)}/>
         {#if column.id === board.completedColumnId}<small>Completed work</small>{/if}
         <button class="icon-button remove-column" disabled={protectedColumn(board, column.id)}
@@ -70,7 +75,7 @@
     {/each}
   </div>
   <form class="column-add" onsubmit={add}>
-    <input aria-label="New column name" placeholder="New column name…" maxlength="60" bind:value={newColumn}/>
+    <input aria-label="New column name" placeholder="New column name…" maxlength={limits.columnName} bind:value={newColumn}/>
     <button type="submit" disabled={!newColumn.trim()}>Add column</button>
   </form>
   <p class="settings-help">Columns apply across projects and Today. New columns appear before completed work.</p>

@@ -1,5 +1,8 @@
 export type Status = string;
 export interface Column { id: string; name: string }
+export const limits = { taskTitle: 300, projectName: 80, columnName: 60 } as const;
+// Core columns are protected from removal even after renaming.
+export const coreColumnIds = ['todo', 'doing', 'done'] as const;
 export const defaultColumns: Column[] = [{ id: 'todo', name: 'To do' }, { id: 'doing', name: 'Doing' }, { id: 'done', name: 'Done' }];
 export type View = 'all' | 'today';
 export const projectColors = [
@@ -13,10 +16,9 @@ export interface Project { id: string; name: string; color: string }
 export interface CheckItem { id: string; title: string; done: boolean }
 export interface Task { id: string; title: string; projectId: string; status: Status; blocked: boolean; today: boolean; order: number; todayOrder: number; notes: string; checklist: CheckItem[] }
 export type TaskPatch = Partial<Pick<Task, 'title' | 'notes' | 'blocked'>>;
-export interface Board { version: 6; completedColumnId: string; collapsedProjects: string[]; columns: Column[]; projects: Project[]; tasks: Task[] }
+export interface Board { completedColumnId: string; collapsedProjects: string[]; columns: Column[]; projects: Project[]; tasks: Task[] }
 export function emptyBoard(): Board {
   return {
-    version: 6,
     completedColumnId: 'done',
     collapsedProjects: [],
     columns: defaultColumns.map(column => ({ ...column })),
@@ -29,7 +31,7 @@ export function lane(board: Board, view: View, status: Status, projectId?: strin
     .sort((a, b) => (view === 'today' ? a.todayOrder - b.todayOrder : a.order - b.order) || a.id.localeCompare(b.id));
 }
 export function addTask(board: Board, title: string, projectId: string, view: View, status: Status = board.columns.find(c => c.id !== board.completedColumnId)!.id): Board {
-  if (!title.trim() || title.trim().length > 300 || !board.columns.some(c => c.id === status) || !board.projects.some(p => p.id === projectId)) return board;
+  if (!title.trim() || title.trim().length > limits.taskTitle || !board.columns.some(c => c.id === status) || !board.projects.some(p => p.id === projectId)) return board;
   const task: Task = { id: crypto.randomUUID(), title: title.trim(), projectId, status, today: view === 'today',
     order: Math.max(-1, ...lane(board, 'all', status, projectId).map(t => t.order)) + 1,
     todayOrder: Math.max(-1, ...lane(board, 'today', status).map(t => t.todayOrder)) + 1, blocked: false, notes: '', checklist: [] };
@@ -38,7 +40,7 @@ export function addTask(board: Board, title: string, projectId: string, view: Vi
 export function patchTask(board: Board, id: string, patch: TaskPatch): Board {
   if (!board.tasks.some(task => task.id === id)) return board;
   if (patch.title !== undefined) {
-    if (!patch.title.trim() || patch.title.trim().length > 300) return board;
+    if (!patch.title.trim() || patch.title.trim().length > limits.taskTitle) return board;
     patch = { ...patch, title: patch.title.trim() };
   }
   if (patch.blocked && board.tasks.find(t => t.id === id)?.status === board.completedColumnId) return board;
@@ -72,13 +74,13 @@ export function moveTask(board: Board, id: string, status: Status, view: View, p
 // IDs remain stable when labels change, so renaming cannot move or lose tasks.
 export function renameColumn(board: Board, id: string, name: string): Board {
   const title = name.trim();
-  if (!title.trim() || title.length > 60 || !board.columns.some(c => c.id === id) || board.columns.some(c => c.id !== id && c.name.trim().toLowerCase() === title.trim().toLowerCase())) return board;
+  if (!title || title.length > limits.columnName || !board.columns.some(c => c.id === id) || board.columns.some(c => c.id !== id && c.name.trim().toLowerCase() === title.toLowerCase())) return board;
   if (board.columns.find(column => column.id === id)?.name === title) return board;
   return { ...board, columns: board.columns.map(c => c.id === id ? { ...c, name: title } : c) };
 }
 export function addColumn(board: Board, name: string): Board {
   const title = name.trim();
-  if (!title || title.length > 60 || board.columns.some(c => c.name.trim().toLowerCase() === title.trim().toLowerCase())) return board;
+  if (!title || title.length > limits.columnName || board.columns.some(c => c.name.trim().toLowerCase() === title.toLowerCase())) return board;
   const columns = [...board.columns];
   const done = columns.findIndex(c => c.id === board.completedColumnId);
   columns.splice(done < 0 ? columns.length : done, 0, { id: crypto.randomUUID(), name: title });
@@ -103,14 +105,14 @@ export function clearToday(board: Board): Board {
   return { ...board, tasks: board.tasks.map(t => t.today ? { ...t, today: false } : t) };
 }
 export function protectedColumn(board: Board, id: string): boolean {
-  return ['todo', 'doing', 'done', board.completedColumnId].includes(id);
+  return [...coreColumnIds, board.completedColumnId].includes(id);
 }
 export function projectColor(color: string): string {
   return projectColors.some(c => c.id === color) ? `var(--${color})` : color;
 }
 export function saveProject(board: Board, id: string | null, name: string, color: string): Board {
   const title = name.trim();
-  if (!title || title.length > 80 || !isProjectColor(color) || board.projects.some(p => p.id !== id && p.name.trim().toLowerCase() === title.toLowerCase())) return board;
+  if (!title || title.length > limits.projectName || !isProjectColor(color) || board.projects.some(p => p.id !== id && p.name.trim().toLowerCase() === title.toLowerCase())) return board;
   if (id && !board.projects.some(p => p.id === id)) return board;
   return { ...board, projects: id ? board.projects.map(p => p.id === id ? { ...p, name: title, color } : p) : [...board.projects, { id: crypto.randomUUID(), name: title, color }] };
 }

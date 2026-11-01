@@ -1,10 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import type { Task, TaskPatch } from '../lib/model';
+  import { limits, type Task, type TaskPatch } from '../lib/model';
   import Icon from './Icon.svelte';
   let { task, completed, ondelete, onclose, onsave, saveError = '', ondirty }: {
     task: Task; completed: boolean; ondelete: () => void; onclose: () => void;
-    onsave: (patch: TaskPatch) => boolean;
+    onsave: (patch: TaskPatch) => Promise<boolean>;
     saveError?: string; ondirty: (dirty: boolean) => void;
   } = $props();
   let title = $state(untrack(() => task.title));
@@ -14,17 +14,19 @@
   let dialog: HTMLDialogElement;
   let titleInput: HTMLTextAreaElement;
   $effect(() => { if (dialog && !dialog.open) { dialog.showModal(); titleInput.focus(); titleInput.select(); } });
-  function save(event: SubmitEvent) {
+  let saving = false;
+  async function save(event: SubmitEvent) {
     event.preventDefault();
-    if (!title.trim()) return;
-    if (onsave({ title: title.trim(), notes, blocked })) dialog.close();
+    if (!title.trim() || saving) return;
+    saving = true;
+    try { if (await onsave({ title: title.trim(), notes, blocked })) dialog.close(); } finally { saving = false; }
   }
 </script>
 <dialog bind:this={dialog} class="task-dialog" aria-label="Edit task" onclose={onclose}>
   <div class="editor-top"><span>Edit task</span><button class="icon-button" aria-label="Close task details" onclick={() => dialog.close()}><Icon name="close"/></button></div>
   <form onsubmit={save}>
     <label class="notes-label" for="task-title">Title</label>
-    <textarea bind:this={titleInput} id="task-title" class="notes-input title-input" rows="2" maxlength="300" bind:value={title}></textarea>
+    <textarea bind:this={titleInput} id="task-title" class="notes-input title-input" rows="2" maxlength={limits.taskTitle} bind:value={title}></textarea>
     <label class="notes-label" for="task-description">Description</label>
     <textarea id="task-description" class="notes-input" placeholder="Add a description…" rows="6" bind:value={notes}></textarea>
     <div class="blocker-control"><label class="blocker-toggle"><input type="checkbox" bind:checked={blocked} disabled={completed}/>Blocked</label></div>

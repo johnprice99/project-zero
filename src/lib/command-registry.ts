@@ -1,6 +1,7 @@
 import { protectedColumn, type Board, type View } from './model.ts';
 import type { Command } from './commands.ts';
 import type { Theme } from './theme';
+import type { BackupInfo } from './storage.ts';
 export interface CommandActions {
   newTask(): void; newProject(): void; editProject(id: string): void; deleteProject(id: string): void; project(id: string): void;
   all(): void; todayView(): void; settings(): void; theme(theme: Theme): void;
@@ -10,8 +11,14 @@ export interface CommandActions {
   toggleToday(id: string): void; toggleBlocked(id: string): void; deleteTask(id: string): void;
   clearDone(): void; clearToday(): void;
   addColumn(): void; renameColumn(id: string): void; removeColumn(id: string, destination: string): void; export(): void;
+  restoreFile(): void; restoreBackup(id: string): void;
 }
-export function buildCommands(board: Board, view: View, projectId: string | null, a: CommandActions): Command[] {
+const backupReasons: Record<string, string> = { opened: 'Before the first change after opening', interval: 'Automatic', restore: 'Before a restore' };
+function backupCommand(backup: BackupInfo, a: CommandActions): Command {
+  const label = new Date(backup.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return { id: `restore-backup-${backup.id}`, label, detail: backupReasons[backup.reason] ?? 'Backup', run: () => a.restoreBackup(backup.id) };
+}
+export function buildCommands(board: Board, view: View, projectId: string | null, a: CommandActions, backups: BackupInfo[] = []): Command[] {
   const active = board.tasks.filter(t => t.status !== board.completedColumnId);
   const projectName = (id: string) => board.projects.find(p => p.id === id)?.name ?? '';
   const taskItems = (tasks: typeof board.tasks, key: string, action: (id: string) => void): Command[] => tasks.map(t => ({ id: `${key}-${t.id}`, label: t.title, detail: projectName(t.projectId), run: () => action(t.id) }));
@@ -41,6 +48,8 @@ export function buildCommands(board: Board, view: View, projectId: string | null
     { id: 'settings', label: 'Open Settings', group: 'Preferences', run: a.settings },
     ...(['light', 'dark', 'system'] as const).map(theme => ({ id: `theme-${theme}`, label: `${theme[0].toUpperCase()}${theme.slice(1)} appearance`, group: 'Preferences', keywords: 'theme colour mode', run: () => a.theme(theme) })),
     { id: 'export', label: 'Export tasks', group: 'Data', keywords: 'backup json', run: a.export },
+    { id: 'restore-file', label: 'Restore from exported file…', group: 'Data', keywords: 'import open json recover', run: a.restoreFile },
+    { id: 'restore-backup', label: 'Restore from backup…', group: 'Data', keywords: 'recover undo', children: backups.map(backup => backupCommand(backup, a)) },
   ];
   if (board.tasks.some(t => t.today)) roots.push({ id: 'clear-today', label: "Clear today's work", group: 'Cleanup', keywords: 'reset fresh daily', run: a.clearToday });
   if (board.tasks.some(t => t.status === board.completedColumnId && (!projectId || t.projectId === projectId) && (view !== 'today' || t.today))) roots.push({ id: 'clear-done', label: 'Clear completed tasks in this view', group: 'Cleanup', run: a.clearDone });

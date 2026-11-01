@@ -1,111 +1,64 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeBoard } from '../src/lib/codec.ts';
+import { decodeAnyBoard, decodeBoard, encodeBoard, readableError, SCHEMA } from '../src/lib/codec.ts';
 import { sampleBoard } from '../src/lib/sample.ts';
 
-test('legacy blocked cards migrate into Doing with an independent flag', () => {
-  const current = sampleBoard();
-  const legacy = { ...current, version: 1, tasks: current.tasks.map(({ blocked, ...t }) => ({ ...t, status: blocked ? 'blocked' : t.status })) };
-  const before = JSON.stringify(legacy);
-  const migrated = decodeBoard(legacy);
-  assert.equal(migrated.version, 6);
-  assert.equal(migrated.tasks.length, legacy.tasks.length);
-  const blocked = migrated.tasks.find(t => t.id === 'sample-6')!;
-  assert.equal(blocked.status, 'doing'); assert.equal(blocked.blocked, true);
-  assert.equal(blocked.notes, legacy.tasks[6].notes);
-  assert.equal(blocked.today, legacy.tasks[6].today);
-  assert.equal(JSON.stringify(legacy), before);
-});
-test('invalid and future saved formats are rejected', () => {
-  assert.throws(() => decodeBoard({ ...sampleBoard(), version: 99 }));
-  assert.throws(() => decodeBoard({ ...sampleBoard(), tasks: [{ title: 'incomplete' }] }));
-  assert.throws(() => decodeBoard({ ...sampleBoard(), tasks: [...sampleBoard().tasks, sampleBoard().tasks[0]] }));
-});
-test('current saved format roundtrips through JSON', () => {
-  const board = sampleBoard();
-  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(board))), board);
-});
+const roundtrip = (value: unknown) => JSON.parse(JSON.stringify(value));
 
-test('version 2 drafts gain columns without changing task content or order', () => {
-  const { columns, ...current } = sampleBoard();
-  const legacy = { ...current, version: 2, tasks: current.tasks.map(t => ({ ...t, blockerReason: '' })) };
-  const migrated = decodeBoard(legacy);
-  assert.equal(migrated.version, 6);
-  assert.deepEqual(migrated.columns.map(c => c.id), ['todo', 'doing', 'done']);
-  assert.deepEqual(migrated.tasks, current.tasks);
-});
-test('custom columns and renamed completion column survive save and reload', () => {
+test('saved boards roundtrip through JSON with their schema number', () => {
   const board = sampleBoard();
   board.columns.splice(2, 0, { id: 'review', name: 'Review' });
-  board.columns.find(c => c.id === 'done')!.name = 'Finished';
-  board.tasks[0].status = 'review';
-  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(board))), board);
-  assert.throws(() => decodeBoard({ ...board, columns: board.columns.filter(c => c.id !== 'review') }));
-});
-
-
-test('version 3 gains saved project visibility', () => {
-  const current = sampleBoard();
-  const { completedColumnId, collapsedProjects, ...old } = current;
-  const migrated = decodeBoard({ ...old, version: 3, tasks: old.tasks.map(t => ({ ...t, blockerReason: '' })) });
-  assert.equal(migrated.completedColumnId, 'done');
-  assert.deepEqual(migrated.collapsedProjects, []);
-  assert.deepEqual(migrated.tasks, old.tasks);
-});
-test('saved collapse preferences roundtrip', () => {
-  const board = sampleBoard();
-  board.collapsedProjects = ['zero', 'web'];
-  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(board))), board);
-});
-
-
-test('custom project colours survive save and reload', () => {
-  const board = sampleBoard();
+  board.collapsedProjects = ['web'];
   board.projects[0].color = '#bb22cc';
-  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(board))), board);
-});
-test('core columns removed by earlier versions are restored without losing cards', () => {
-  const board = sampleBoard();
-  board.columns = board.columns.filter(c => c.id !== 'doing');
-  board.tasks = board.tasks.map(t => t.status === 'doing' ? { ...t, status: 'todo' } : t);
-  const migrated = decodeBoard(board);
-  assert(migrated.columns.some(c => c.id === 'doing'));
-  assert.deepEqual(migrated.tasks, board.tasks);
+  board.tasks[0].checklist = [{ id: 'c1', title: 'Kept without editing controls', done: true }];
+  const stored = roundtrip(encodeBoard(board));
+  assert.equal(stored.schema, SCHEMA);
+  assert.deepEqual(decodeBoard(stored), board);
 });
 
-
-test('old blocker text is preserved once and the removed recovery list is discarded', () => {
-  const board = sampleBoard();
-  const tasks = board.tasks.map(t => ({ ...t, blockerReason: t.id === 'sample-0' ? 'Waiting for approval' : t.id === 'sample-6' ? t.notes : '' }));
-  const deleted = { ...tasks.pop()!, blockerReason: 'An old blocker' };
-  const legacy = { ...board, version: 4, tasks, deletedTasks: [deleted] };
-  const migrated = decodeBoard(legacy);
-  assert.equal(migrated.tasks[0].notes, tasks[0].notes + '\n\nWaiting for approval');
-  assert.equal(migrated.tasks.find(t => t.id === 'sample-6')!.notes, board.tasks[6].notes);
-  assert.equal('deletedTasks' in migrated, false);
-  assert.equal(migrated.tasks.length, tasks.length);
-  assert.equal('blockerReason' in migrated.tasks[0], false);
-  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(migrated))), migrated);
+test('decoding keeps only supported fields', () => {
+  const stored = roundtrip(encodeBoard(sampleBoard()));
+  stored.extra = true;
+  stored.tasks[0].extra = true;
+  assert.deepEqual(decodeBoard(stored), sampleBoard());
 });
 
-test('malformed task details fail validation with a useful error', () => {
-  const board = sampleBoard();
-  for (const patch of [{ title: '  ' }, { title: 'a'.repeat(301) }, { blockerReason: 42 }, { projectId: 'missing' }, { order: Infinity }]) {
-    assert.throws(() => decodeBoard({ ...board, tasks: [{ ...board.tasks[0], ...patch }] }), /Invalid saved tasks/);
+test('errors name the record and field that is wrong', () => {
+  const stored = () => roundtrip(encodeBoard(sampleBoard()));
+  const cases: [(doc: any) => void, RegExp][] = [
+    [doc => { doc.tasks[3].title = '  '; }, /tasks\[3\]\.title must be non-empty text of up to 300 characters/],
+    [doc => { doc.tasks[2].projectId = 'missing'; }, /tasks\[2\]\.projectId must name one of the projects/],
+    [doc => { doc.tasks[1].order = 'first'; }, /tasks\[1\]\.order must be a number/],
+    [doc => { doc.tasks[3].status = 'done'; doc.tasks[3].blocked = true; }, /tasks\[3\]\.blocked cannot be set on completed work/],
+    [doc => { doc.tasks.push({ ...doc.tasks[0] }); }, /tasks contains a duplicate id: “sample-0”/],
+    [doc => { doc.projects[1].name = ' project ZERO '; }, /projects contains a duplicate name/],
+    [doc => { doc.projects[0].color = 'red; background: url(x)'; }, /projects\[0\]\.color/],
+    [doc => { doc.columns = doc.columns.filter((c: { id: string }) => c.id !== 'doing'); }, /columns is missing the core “doing” column/],
+    [doc => { doc.collapsedProjects = ['missing']; }, /collapsedProjects\[0\] must name one of the projects/],
+  ];
+  for (const [damage, message] of cases) {
+    const doc = stored();
+    damage(doc);
+    assert.throws(() => decodeBoard(doc), message);
   }
-  assert.throws(() => decodeBoard({ ...board, projects: [{ ...board.projects[0], id: '' }] }), /Invalid saved projects/);
 });
-test('restoring missing core columns cannot introduce duplicate names or break the next restart', () => {
-  const board = sampleBoard();
-  board.columns = [{ id: 'todo', name: 'To do' }, { id: 'review', name: 'Doing' }, { id: 'done', name: 'Done' }];
-  board.tasks = board.tasks.map(task => task.status === 'doing' ? { ...task, status: 'review' } : task);
-  const migrated = decodeBoard(board);
-  assert.equal(migrated.columns.find(column => column.id === 'doing')!.name, 'Doing (restored)');
-  assert.deepEqual(migrated.tasks, board.tasks);
-  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(migrated))), migrated);
+
+test('boards from a newer version of the app are refused rather than misread', () => {
+  const doc = { ...roundtrip(encodeBoard(sampleBoard())), schema: SCHEMA + 1 };
+  assert.throws(() => decodeBoard(doc), /newer version of Project Zero/);
+  assert.throws(() => decodeBoard({ ...doc, schema: undefined }), /schema is missing/);
 });
-test('column-name duplicates are compared after trimming and ignoring case', () => {
+
+test('restores accept saved documents, backup files, and prototype exports', () => {
   const board = sampleBoard();
-  board.columns[1].name = ' to DO ';
-  assert.throws(() => decodeBoard(board), /Invalid saved columns/);
+  const stored = roundtrip(encodeBoard(board));
+  assert.deepEqual(decodeAnyBoard(stored), { board, upgraded: false });
+  assert.deepEqual(decodeAnyBoard({ app: 'project-zero', revision: 4, savedAt: 1, board: stored }), { board, upgraded: false });
+  assert.deepEqual(decodeAnyBoard({ ...board, version: 6 }), { board, upgraded: true });
+});
+
+test('read errors are explained in plain language', () => {
+  assert.match(readableError(new SyntaxError('Unexpected token'), 'x'), /not valid JSON/);
+  assert.match(readableError({ kind: 'io', message: 'Disk full' }, 'x'), /Disk full/);
+  assert.equal(readableError(undefined, 'Fallback'), 'Fallback');
 });

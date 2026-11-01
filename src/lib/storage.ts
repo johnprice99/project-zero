@@ -1,48 +1,123 @@
+import { decodeAnyBoard, encodeBoard } from './codec.ts';
 import type { Board } from './model.ts';
-import { decodeBoard } from './codec.ts';
+import { importPrototypeBoard } from './prototype.ts';
 
-const KEY = 'project-zero.prototype.board.v6';
-const OLD_KEYS = [5, 4, 3, 2, 1].map(v => `project-zero.prototype.board.v${v}`);
-type StorageAccess = Pick<Storage, 'getItem' | 'setItem'>;
+// Where the board is kept. The desktop app saves to a file through Rust; the browser
+// preview uses localStorage. Both store a JSON board document with a revision number.
+export interface StorageBackend {
+  load(): Promise<{ revision: number; contents: string } | null>;
+  // Refuses with ConflictError unless the stored revision still matches.
+  save(expectedRevision: number, contents: string): Promise<number>;
+  // Replaces the board for restores. Backs up the current board first.
+  replace(contents: string): Promise<number>;
+  listBackups(): Promise<BackupInfo[]>;
+  readBackup(id: string): Promise<string>;
+  // Resolves false when the user cancels.
+  exportFile(fileName: string, contents: string): Promise<boolean>;
+  importFile(): Promise<string | null>;
+  // A board left by the browser prototype, for one-off import.
+  prototypeBoard(): string | null;
+}
+export interface BackupInfo {
+  id: string;
+  savedAt: number;
+  reason: string;
+}
+export class ConflictError extends Error {}
+export type LoadSource = 'saved' | 'upgraded' | 'imported' | 'empty';
 
-// Keep the adapter independent of browser globals so failure and conflict handling can be tested.
-// Production storage will be SQLite in Tauri's app-data directory.
-export function createBoardStorage(storage: StorageAccess) {
-  let loaded = false;
-  let expected: string | null = null;
+interface Waiter {
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+interface Job {
+  kind: 'save' | 'replace';
+  board: Board;
+  waiters: Waiter[];
+}
+
+// Saves run one at a time, in order. Changes made while a save is running are combined
+// into the next save. If a save fails, the queued changes built on it are abandoned too,
+// so the caller can return to the last saved board.
+export function createBoardStore(backend: StorageBackend) {
+  let revision: number | null = null;
+  let saved: Board | null = null;
+  let queue: Job[] = [];
+  let idle: Promise<void> = Promise.resolve();
+  let draining = false;
+
+  async function drain(): Promise<void> {
+    draining = true;
+    while (queue.length) {
+      const job = queue.shift()!;
+      try {
+        const contents = JSON.stringify(encodeBoard(job.board));
+        revision = job.kind === 'replace' ? await backend.replace(contents) : await backend.save(revision!, contents);
+        saved = job.board;
+        for (const waiter of job.waiters) waiter.resolve();
+      } catch (error) {
+        const abandoned = queue.flatMap(queued => queued.waiters);
+        queue = [];
+        for (const waiter of [...job.waiters, ...abandoned]) waiter.reject(error);
+      }
+    }
+    draining = false;
+  }
+  function schedule(kind: Job['kind'], board: Board): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const last = queue.at(-1);
+      if (kind === 'save' && last?.kind === 'save') {
+        last.board = board;
+        last.waiters.push({ resolve, reject });
+      } else queue.push({ kind, board, waiters: [{ resolve, reject }] });
+      if (!draining) idle = drain();
+    });
+  }
 
   return {
-    read(): Board | null {
-      loaded = false;
-      const current = storage.getItem(KEY);
-      const raw = current ?? OLD_KEYS.map(key => storage.getItem(key)).find(value => value !== null) ?? null;
-      const board = raw === null ? null : decodeBoard(JSON.parse(raw));
-      expected = current;
-      loaded = true;
-      return board;
-    },
-    write(board: Board): void {
-      if (!loaded) throw new Error('Read the saved board before making changes.');
-      if (storage.getItem(KEY) !== expected) {
-        throw new Error('This board changed in another window. Reload to use the latest saved version.');
+    async load(): Promise<{ board: Board | null; source: LoadSource }> {
+      await idle;
+      revision = null;
+      saved = null;
+      const file = await backend.load();
+      if (file) {
+        const { board, upgraded } = decodeAnyBoard(JSON.parse(file.contents));
+        [revision, saved] = [file.revision, board];
+        return { board, source: upgraded ? 'upgraded' : 'saved' };
       }
-      const raw = JSON.stringify(board);
-      storage.setItem(KEY, raw);
-      expected = raw;
+      const prototype = backend.prototypeBoard();
+      const board = prototype === null ? null : importPrototypeBoard(JSON.parse(prototype));
+      revision = 0;
+      return { board, source: board ? 'imported' : 'empty' };
+    },
+    save(board: Board): Promise<void> {
+      if (revision === null) return Promise.reject(new Error('The saved board has not been loaded.'));
+      return schedule('save', board);
+    },
+    // Works even when the saved board could not be read, so a backup can recover it.
+    replace(board: Board): Promise<void> {
+      return schedule('replace', board);
+    },
+    saved(): Board | null {
+      return saved;
+    },
+    flush(): Promise<void> {
+      return idle;
+    },
+    listBackups(): Promise<BackupInfo[]> {
+      return backend.listBackups();
+    },
+    async readBackup(id: string): Promise<Board> {
+      return decodeAnyBoard(JSON.parse(await backend.readBackup(id))).board;
+    },
+    async importFile(): Promise<Board | null> {
+      const contents = await backend.importFile();
+      return contents === null ? null : decodeAnyBoard(JSON.parse(contents)).board;
+    },
+    exportFile(board: Board, date = new Date()): Promise<boolean> {
+      const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return backend.exportFile(`project-zero-${day}.json`, JSON.stringify(encodeBoard(board), null, 2));
     },
   };
 }
-
-let adapter: ReturnType<typeof createBoardStorage> | undefined;
-function boardStorage() { return adapter ??= createBoardStorage(localStorage); }
-export function readBoard(): Board | null { return boardStorage().read(); }
-export function writeBoard(board: Board): void { boardStorage().write(board); }
-
-export function exportBoard(board: Board): void {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(board, null, 2)], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `project-zero-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+export type BoardStore = ReturnType<typeof createBoardStore>;
