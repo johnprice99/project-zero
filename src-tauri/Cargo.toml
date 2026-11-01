@@ -1,6 +1,6 @@
 [package]
 name = "project-zero"
-version = "1.0.0"
+version = "1.0.1"
 description = "A clear view of what's next"
 edition = "2021"
 
