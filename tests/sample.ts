@@ -1,4 +1,4 @@
-import { emptyBoard, type Board, type Status } from './model.ts';
+import { emptyBoard, type Board, type Status } from '../src/lib/model.ts';
 export function sampleBoard(): Board {
   const rows: [string, string, Status, boolean, string][] = [
     ['zero', 'Make adding a task feel effortless', 'doing', true, 'One line, Enter, and on to the next thought.'],

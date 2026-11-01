@@ -13,10 +13,6 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 input[type='checkbox'] { accent-color: var(--accent); }
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar { width: var(--sidebar-width); flex-shrink: 0; padding: 24px 12px 16px; background: var(--sidebar-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.brand { display: flex; align-items: center; gap: 8px; margin: 0 8px 30px; }
-.brand-mark { display: flex; align-items: center; justify-content: center; background: var(--accent); color: var(--on-accent); width: 26px; height: 26px; border-radius: 7px; font-size: 17px; font-weight: 600; letter-spacing: -2px; padding-right: 2px; flex-shrink: 0; }
-.brand-mark span { font-weight: 400; }
-.brand strong { font-size: 14px; letter-spacing: -.2px; white-space: nowrap; }
 .view-nav, .project-nav { display: flex; flex-direction: column; gap: 5px; }
 .view-nav button, .project-link { border: 1px solid transparent; background: none; display: flex; align-items: center; gap: 9px; text-align: left; padding: 10px; color: var(--text-secondary); font-size: 14px; }
 .view-nav button.active { color: var(--accent-ink); background: var(--accent-soft); }
@@ -120,9 +116,9 @@ textarea.notes-input { resize: vertical; }
 .command-option.selected { background: var(--accent); color: var(--on-accent); }
 .command-option.selected .command-detail, .command-option.selected .command-hint { color: color-mix(in srgb, var(--on-accent) 75%, transparent); }
 .command-message { margin: 0; padding: 10px 18px 14px; border-top: 1px solid var(--border); color: var(--error-text); font-size: var(--text-sm); }
-@media (max-width: 900px) { :root { --sidebar-width: 176px; --content-padding: 20px; --column-gap: 14px; } .brand { margin-left: 3px; gap: 7px; } .brand strong { font-size: var(--text-sm); } }
+@media (max-width: 900px) { :root { --sidebar-width: 176px; --content-padding: 20px; --column-gap: 14px; } }
 @media (max-width: 700px) { .board-actions { gap: 7px; } }
-@media (max-width: 580px) { :root { --sidebar-width: 54px; --content-padding: 14px; } .sidebar { padding: 24px 7px 12px; } .brand { margin: 0 auto 25px; } .brand strong, .view-nav button > span, .project-nav, .projects-header { display: none; } .view-nav button { justify-content: center; padding: 10px; } }
+@media (max-width: 580px) { :root { --sidebar-width: 54px; --content-padding: 14px; } .sidebar { padding: 24px 7px 12px; } .view-nav button > span, .project-nav, .projects-header { display: none; } .view-nav button { justify-content: center; padding: 10px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
 /* Resizing affects only the navigation pane; its saved width stays independent of the board. */
 .sidebar-resizer { position: sticky; top: 0; width: 6px; height: 100vh; margin-left: -3px; margin-right: -3px; flex-shrink: 0; z-index: 2; cursor: col-resize; touch-action: none; }

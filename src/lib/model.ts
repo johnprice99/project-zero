@@ -58,6 +58,16 @@ export function emptyBoard(): Board {
     tasks: [],
   };
 }
+// True when there is nothing for Start over to clear: no projects and the default columns.
+export function isEmptyBoard(board: Board): boolean {
+  const defaults = emptyBoard();
+  return (
+    !board.projects.length &&
+    !board.tasks.length &&
+    board.completedColumnId === defaults.completedColumnId &&
+    JSON.stringify(board.columns) === JSON.stringify(defaults.columns)
+  );
+}
 export function lane(board: Board, view: View, status: Status, projectId?: string): Task[] {
   return board.tasks
     .filter(t => t.status === status && (view !== 'today' || t.today) && (!projectId || t.projectId === projectId))

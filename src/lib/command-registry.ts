@@ -1,4 +1,4 @@
-import { protectedColumn, type Board, type View } from './model.ts';
+import { isEmptyBoard, protectedColumn, type Board, type View } from './model.ts';
 import type { Command } from './commands.ts';
 import type { Theme } from './theme';
 export interface CommandActions {
@@ -21,6 +21,7 @@ export interface CommandActions {
   deleteTask(id: string): void;
   clearDone(): void;
   clearAllDone(): void;
+  startOver(): void;
   about(): void;
   checkForUpdates(): void;
   website(): void;
@@ -228,6 +229,8 @@ export function buildCommands(
   // Only offered when it would clear fewer than “Clear all” does.
   if (inView.length && inView.length < completed.length)
     roots.push({ id: 'clear-done', label: 'Clear completed tasks in this view', group: 'Cleanup', run: a.clearDone });
+  if (!isEmptyBoard(board))
+    roots.push({ id: 'start-over', label: 'Start over with an empty board…', group: 'Cleanup', run: a.startOver });
   // A one-project board has no destination for “Move task to project”.
   // Remove empty branches recursively so neither browsing nor search offers dead ends.
   function available(items: Command[]): Command[] {

@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { readableError } from './codec.ts';
 import { emptyBoard, type Board } from './model.ts';
-import { sampleBoard } from './sample.ts';
+import { onboardingBoard } from './onboarding.ts';
 import { createBoardStore, type BoardStore } from './storage.ts';
 import { createTauriBackend } from './tauri-storage.ts';
 
@@ -18,7 +18,7 @@ export interface Startup {
 export async function openBoard(store: BoardStore): Promise<Startup> {
   try {
     const loaded = await store.load();
-    const board = loaded.board ?? sampleBoard();
+    const board = loaded.board ?? onboardingBoard();
     if (loaded.source !== 'saved') await store.save(board);
     return { board, error: null };
   } catch (error) {

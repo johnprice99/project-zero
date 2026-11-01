@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ConflictError, createBoardStore } from '../src/lib/storage.ts';
-import { sampleBoard } from '../src/lib/sample.ts';
+import { sampleBoard } from './sample.ts';
 import { patchTask, type Board } from '../src/lib/model.ts';
 import { controlledBackend, memoryBackend, type Disk } from './backends.ts';
 

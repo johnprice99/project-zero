@@ -14,7 +14,7 @@
   import { rememberRecent, type PalettePrompt } from './lib/commands';
   import { buildCommands } from './lib/command-registry';
   import TaskPalette from './components/TaskPalette.svelte';
-  import { limits, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
+  import { limits, emptyBoard, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
   import { readableError } from './lib/codec';
   import { ConflictError } from './lib/storage';
   import { createCommitter } from './lib/commit';
@@ -184,7 +184,7 @@
     toggleToday: (id) => void commit(b => toggleToday(b, id)),
     toggleBlocked: (id) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? patchTask(b, id, { blocked: !task.blocked }) : b; }),
     deleteTask: (id) => askDelete([id]),
-    clearDone, clearAllDone: askClearAllCompleted, clearToday: askClearToday,
+    clearDone, clearAllDone: askClearAllCompleted, clearToday: askClearToday, startOver: askStartOver,
     about: openAbout, checkForUpdates: () => void checkForUpdates().catch(error => saveError = readableError(error, 'Couldn’t check for updates.')),
     website: () => void openLink('website'), reportProblem: () => void openLink('issues'),
     addColumn: () => promptForColumn(null), renameColumn: promptForColumn,
@@ -228,6 +228,24 @@
     const tasks = ids.length === 1 ? 'the 1 completed task' : `all ${ids.length} completed tasks`;
     confirmation = { title: 'Clear all completed tasks?', message: `Permanently delete ${tasks} across every project? This cannot be undone.`, action: 'Clear completed tasks', run: () => void commit(b => deleteTasks(b, ids)) };
   }
+  function askStartOver() {
+    if (storageBlocked) return;
+    const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+    const items = [board.projects.length && count(board.projects.length, 'project'), board.tasks.length && count(board.tasks.length, 'task')].filter(Boolean).join(' and ');
+    const columns = JSON.stringify(board.columns) !== JSON.stringify(emptyBoard().columns) && 'reset the columns to To do, Doing and Done';
+    const what = [items && `permanently delete ${items}`, columns].filter(Boolean).join(', and ');
+    confirmation = {
+      title: 'Start over with an empty board?',
+      message: `${what[0].toUpperCase()}${what.slice(1)}? This cannot be undone.`,
+      action: 'Start over',
+      run: async () => {
+        // Leave a project's page first, as deleting a project does, so it never shows empty.
+        const before = { view, projectId };
+        switchView('all');
+        if (!(await commit(() => emptyBoard()))) [view, projectId] = [before.view, before.projectId];
+      },
+    };
+  }
   function askClearToday() {
     const count = board.tasks.filter(t => t.today).length;
     if (!count || storageBlocked) return;
@@ -243,7 +261,6 @@
 <svelte:window onkeydown={keyboard}/>
 <div class="app-shell" style={`--sidebar-width: ${sidebarWidth}px`}>
   <aside class="sidebar" id="project-sidebar">
-    <div class="brand"><span class="brand-mark">P<span>0</span></span><strong>Project Zero</strong></div>
     <nav class="view-nav" aria-label="Views">
       <button aria-label="All work" class:active={view === 'all' && !projectId} aria-current={view === 'all' && !projectId ? 'page' : undefined} onclick={() => switchView('all')}><Icon name="board" size={16}/><span>All work</span></button>
       <button aria-label="Today" class:active={view === 'today'} aria-current={view === 'today' ? 'page' : undefined} onclick={() => switchView('today')}><Icon name="sun" size={16}/><span>Today</span></button>

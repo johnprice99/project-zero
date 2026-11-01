@@ -19,7 +19,7 @@ import {
   patchTask,
 } from '../src/lib/model.ts';
 import { decodeBoard, encodeBoard } from '../src/lib/codec.ts';
-import { sampleBoard } from '../src/lib/sample.ts';
+import { sampleBoard } from './sample.ts';
 
 test('Today ordering is independent of project ordering', () => {
   const original = sampleBoard();

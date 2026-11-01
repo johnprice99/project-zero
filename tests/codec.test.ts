@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeBoard, encodeBoard, readableError, SCHEMA } from '../src/lib/codec.ts';
-import { sampleBoard } from '../src/lib/sample.ts';
+import { sampleBoard } from './sample.ts';
 
 const roundtrip = (value: unknown) => JSON.parse(JSON.stringify(value));
 

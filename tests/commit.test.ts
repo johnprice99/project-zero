@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createCommitter } from '../src/lib/commit.ts';
 import { createBoardStore } from '../src/lib/storage.ts';
 import { controlledBackend } from './backends.ts';
-import { sampleBoard } from '../src/lib/sample.ts';
+import { sampleBoard } from './sample.ts';
 import { deleteTasks, patchTask } from '../src/lib/model.ts';
 
 const settle = () => new Promise(resolve => setImmediate(resolve));

@@ -10,6 +10,7 @@ A clear view of what's next. A small to-do board for your Mac that works like a 
 - A task has a title, a description and the blocked flag. **Save** applies your edits; Close or Escape discards them. Delete is in the editor and asks first. Finished cards show only Delete.
 - Columns: rename them or add one in Settings or the palette; new columns go before Done. To do, Doing and Done can't be removed, even when renamed. Removing another column asks where its tasks go.
 - **Clear all completed tasks** deletes every finished task; **Clear completed tasks in this view** deletes those in the current project or Today. Both ask first. Deleting is permanent: there is no archive or undo.
+- A new install opens with one project, **Onboard to Project Zero**, whose tasks show how everything works. **Start over with an empty board…** (palette, after asking) deletes every project and task and resets the columns; appearance, sidebar width and recent commands stay.
 - Settings (in the palette): appearance (System, Light or Dark) and columns. Drag the sidebar's edge to resize it.
 - Every change is saved the moment you make it, and the file is never left half written. See [Storage](#storage).
 - The command palette (⇧⌘P) lists only what you can do right now, your recently used commands first. See [Keys](#keys).
@@ -97,10 +98,10 @@ Everything is in the command palette (⇧⌘P). Type to filter: the letters must
 
 ## Code layout
 
-- `src/lib/` — the app without its interface: `model` (tasks, ordering, Today, columns), `codec` (the board format), `storage` (the save queue) with `tauri-storage` (Rust's file), `commit` (apply a change, save it, roll back on failure), `commands` and `command-registry` (the palette), `native` (menus, quitting, updates, links), `theme`, `preferences`, `sample` (the first-run board).
+- `src/lib/` — the app without its interface: `model` (tasks, ordering, Today, columns), `codec` (the board format), `storage` (the save queue) with `tauri-storage` (Rust's file), `commit` (apply a change, save it, roll back on failure), `commands` and `command-registry` (the palette), `native` (menus, quitting, updates, links), `theme`, `preferences`, `onboarding` (the first-run board).
 - `src/components/` and `src/App.svelte` — the interface. `App.svelte` holds the board and which dialog is open. `src/assets/` — the About panel's icons.
 - `src-tauri/src/` — Rust: `storage` (the board file and its revisions), `main` (menu, commands, saving before quit), `updates`, `dialogs`.
-- `tests/` — unit tests (Node's test runner), with an in-memory stand-in for the Rust storage in `backends.ts`; the Rust tests are in `storage.rs` and `updates.rs`.
+- `tests/` — unit tests (Node's test runner), with an in-memory stand-in for the Rust storage in `backends.ts` and a sample board in `sample.ts`; the Rust tests are in `storage.rs` and `updates.rs`.
 - `src-tauri/icons/` — the app icon (see [Icon](#icon)).
 - `scripts/release.mjs` — builds a release (`npm run dist`).
 - `docs/` — the website.

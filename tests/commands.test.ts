@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { filterCommands, orderByRecent, rememberRecent, score, type Command } from '../src/lib/commands.ts';
 import { buildCommands, type CommandActions } from '../src/lib/command-registry.ts';
-import { sampleBoard } from '../src/lib/sample.ts';
-import { addColumn } from '../src/lib/model.ts';
+import { sampleBoard } from './sample.ts';
+import { addColumn, emptyBoard } from '../src/lib/model.ts';
 function registry() {
   const calls: { action: string; args: unknown[] }[] = [];
   const actions = new Proxy({} as CommandActions, {
@@ -128,5 +128,17 @@ test('help commands are listed', () => {
   assert.deepEqual(
     commands.filter(c => c.group === 'Help').map(c => c.label),
     ['About Project Zero', 'Check for Updates…', 'Project Zero Website', 'Report a Problem'],
+  );
+});
+
+test('start over is offered only when there is something to clear', () => {
+  const { actions, calls, commands } = registry();
+  const startOver = commands.find(c => c.id === 'start-over')!;
+  assert.equal(startOver.label, 'Start over with an empty board…');
+  startOver.run!();
+  assert.deepEqual(calls.at(-1), { action: 'startOver', args: [] });
+  assert.equal(
+    buildCommands(emptyBoard(), 'all', null, actions).some(c => c.id === 'start-over'),
+    false,
   );
 });
