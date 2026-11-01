@@ -58,7 +58,7 @@ The board is a single file in your Library; if you use Time Machine, it backs it
 ## Releasing
 
 1. Set the same new `version` in `package.json` and `src-tauri/Cargo.toml` (e.g. 1.2.0 → 1.3.0 for new features, → 1.2.1 for fixes).
-2. `npm run dist` builds `dist/`: `Project-Zero-mac-arm64.dmg` (the download), `Project-Zero-mac-arm64.app.tar.gz` and its `.sig` (the signed update), and `latest.json` (which tells installed copies about it).
+2. Quit Project Zero, then `npm run dist`. It builds, then opens the new build for a few seconds (with a throwaway home folder, so it can't touch your board) and stops if it doesn't start. It puts into `dist/`: `Project-Zero-mac-arm64.dmg` (the download), `Project-Zero-mac-arm64.app.tar.gz` and its `.sig` (the signed update), and `latest.json` (which tells installed copies about it).
 3. On GitHub, **Releases › Draft a new release**: a new tag equal to the version (e.g. `1.3.0`, no “v”), a title, and attach **all four** files. Publish it as the latest release.
 
 The names are fixed, so the website's download link and the update address (`releases/latest/download/latest.json`) keep working from one version to the next.

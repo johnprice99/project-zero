@@ -6,9 +6,19 @@
 // Installed copies only install updates signed with it; the public half is in
 // src-tauri/tauri.conf.json (plugins › updater › pubkey).
 
-import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,6 +60,30 @@ execFileSync('npm', args, { cwd: ROOT, env, stdio: 'inherit' });
 
 const app = join(BUNDLE, 'macos', 'Project Zero.app');
 execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
+
+// Open the new build once and check it starts and saves its first board (1.0.0 shipped a
+// crash at launch that only release builds had). A throwaway home folder keeps it away
+// from the real board and settings.
+async function checkItStarts() {
+  if (spawnSync('/usr/bin/pgrep', ['-f', 'Project Zero.app/Contents/MacOS/project-zero']).status === 0) {
+    throw new Error('Quit Project Zero first: only one copy can run, so the new build could not be checked.');
+  }
+  console.log('\nOpening the new build for a few seconds to check it starts…');
+  const home = mkdtempSync(join(tmpdir(), 'project-zero-check-'));
+  const board = join(home, 'Library', 'Application Support', 'com.johnprice.projectzero', 'board.json');
+  const child = spawn(join(app, 'Contents', 'MacOS', 'project-zero'), { env: { ...process.env, HOME: home } });
+  let output = '';
+  child.stdout.on('data', chunk => (output += chunk));
+  child.stderr.on('data', chunk => (output += chunk));
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline && child.exitCode === null && !existsSync(board)) await new Promise(r => setTimeout(r, 250));
+  const started = existsSync(board);
+  child.kill();
+  rmSync(home, { recursive: true, force: true });
+  if (!started) throw new Error(`The new build did not start and save a board within 10 seconds.\n${output}`);
+  console.log('It started and saved a board.');
+}
+await checkItStarts();
 
 const dmgDir = join(BUNDLE, 'dmg');
 const dmg = readdirSync(dmgDir).find(name => name.endsWith('.dmg'));
