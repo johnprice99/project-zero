@@ -100,3 +100,13 @@ Accepted as they are:
 - The “Prototype · saved on this device” footer was removed.
 - The whole bundle is now ad-hoc signed under `com.johnprice.projectzero`. Previously only the executable was signed by the linker, so `codesign --verify` failed on the app.
 
+
+## Second independent review (owner-requested)
+
+All three findings were confirmed in the code and fixed:
+
+- **High — a deleted task could come back.** Deletions waited for their save before leaving the board, so a change made meanwhile was built on a board that still had the task, and its save wrote the task back. (This was introduced by the earlier fix for failed deletions losing an editor draft.) Deletions are now immediate like every other change. An open editor or project dialog stays on screen until the delete is saved, so a failed delete still keeps its draft. The commit logic moved to `src/lib/commit.ts`, and `tests/commit.test.ts` reproduces the scenario; the previous code fails it.
+- **High — quitting could hide a failed save.** `flush()` resolved even after a failed save, and the app quit regardless (or after three seconds). `flush()` now reports whether the latest save succeeded. If it didn't, Quit, Close Window, and restart-after-update ask “Your latest changes couldn’t be saved” with Don’t Quit (to retry) or Quit Anyway, as Typr does. The forced quit now applies only if the window never answers (ten seconds).
+- **Medium — typing during a save was lost.** The task editor (and the project dialog when editing) now closes after a save only if nothing changed while it was saving; otherwise it stays open with the newer edits.
+
+Clean-up in the same pass: unused icon shapes (icon names are now type-checked), an unused CSS class, unused theme tokens (including `--todo`/`--doing`/`--done`, which were documented but had no effect), Android/iOS/Windows icon sets, a Windows-only attribute, a duplicate theme application at start-up, and exports used only within their own file.

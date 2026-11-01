@@ -109,9 +109,9 @@ Tests are unit tests for the parts where a bug could lose work: task and orderin
 
 The desktop app keeps the board in `~/Library/Application Support/com.johnprice.projectzero/board.json`. Development builds (`npm run tauri dev`) use a separate `development` folder inside it, so they never touch the real board.
 
-- **Saving.** Every change is shown immediately and saved straight away, in order. Changes made while a save is running are combined into the next one. Rust writes a temporary file, flushes it to disk, and renames it over `board.json`. If a save fails, the board returns to its last saved state and the error is shown; open forms keep their draft for retry. Deletions take effect once saved. Every board is checked before it is written, so a bug cannot save a board that would fail to load.
+- **Saving.** Every change is shown immediately and saved straight away, in order. Changes made while a save is running are combined into the next one. Rust writes a temporary file, flushes it to disk, and renames it over `board.json`. If a save fails, the board returns to its last saved state and the error is shown; open forms keep their draft for retry. Deletions behave like every other change, so later changes always build on them; an open editor stays until its task's deletion is saved. A form closes only if nothing was changed while it was saving. Every board is checked before it is written, so a bug cannot save a board that would fail to load.
 - **Revisions.** The file carries a revision number. A save based on an older revision is refused and the latest board is reloaded. Only one copy of the installed app can run at a time (development builds are exempt and use their own data folder).
-- **Quitting.** Quit (Cmd+Q) and closing the window wait for pending saves to finish (up to three seconds). Quitting from the Dock, logging out, or shutting down does not wait; saves start immediately and take milliseconds, so at most a change made in that instant is lost, and the file is never left half-written.
+- **Quitting.** Quit (Cmd+Q), closing the window, and restarting after an update wait for pending saves to finish. If the latest change couldn't be saved, the app asks: Don't Quit (to retry) or Quit Anyway. It quits regardless only if the window doesn't respond within ten seconds. Quitting from the Dock, logging out, or shutting down does not wait; saves start immediately and take milliseconds, so at most a change made in that instant is lost, and the file is never left half-written.
 - **Backups.** The previous board is copied to `backups/` before the first change after opening the app, then at most every 30 minutes, and before any restore. The newest 20 are kept, plus one per day for 60 days.
 - **Unreadable boards.** If the board cannot be read, nothing is overwritten and editing is paused. Restore from backup or Restore from exported file in the command palette replaces it; the unreadable file is kept as a backup first.
 - **Export and restore.** Export tasks waits for pending saves, then saves a readable JSON copy where you choose. Restore accepts an export, a backup, or a board saved by the browser prototype. It asks for confirmation and backs up the current board first.
@@ -153,7 +153,7 @@ The app is ad-hoc signed and not notarised, so a downloaded copy shows Gatekeepe
 
 The P0 monogram is provisional. To replace it, from a 1024 × 1024 PNG:
 
-1. `npx tauri icon path/to/icon.png` regenerates `src-tauri/icons/`.
+1. `npx tauri icon path/to/icon.png` regenerates `src-tauri/icons/`. It also makes Android, iOS, and Windows icons, which a Mac-only app doesn't use: `rm -rf src-tauri/icons/{android,ios,icon.ico,StoreLogo.png,Square*Logo.png}`.
 2. Replace `src/assets/icon-light.png` and `src/assets/icon-dark.png` (the About panel; 256 × 256 is enough). Use the same image twice if there is no dark variant.
 3. Replace `public/favicon.svg` (the browser preview's tab icon), or remove it and point `index.html` at a PNG.
 4. `npm run screenshots` to update the website's icon and screenshots.
@@ -166,7 +166,6 @@ The P0 monogram is provisional. To replace it, from a 1024 × 1024 PNG:
 - `--text`, `--text-secondary`, `--text-muted`: text colours.
 - `--accent`, `--accent-soft`, `--accent-ink`: selection and accent colours.
 - `--border`, `--border-strong`: dividers and card borders.
-- `--todo`, `--doing`, `--done`: default status colours.
 - `--warning-surface`, `--warning-border`, `--warning-strong`, `--warning-ink`, `--on-warning`: blocked-card appearance.
 - `--iris`, `--sage`, `--sand`, `--slate`, `--rose`, `--coral`, `--sky`, `--teal`: project markers.
 - `--palette-shadow`: command palette shadow.
@@ -194,6 +193,7 @@ Cmd+Shift+P is the only app-specific shortcut. The native Mac menu forwards it t
 
 - `src/lib/model.ts`: framework-independent task operations and ordering rules.
 - `src/lib/storage.ts`: the storage interface and the ordered save queue.
+- `src/lib/commit.ts`: applies a change to the board immediately, saves it, and rolls back if the save fails.
 - `src/lib/tauri-storage.ts` / `src/lib/browser-storage.ts`: desktop (Rust) and browser-preview storage.
 - `src/lib/codec.ts`: the board file format, validation, and future migrations.
 - `src/lib/prototype.ts`: frozen importer for boards saved by the browser prototype.

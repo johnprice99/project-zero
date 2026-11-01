@@ -3,13 +3,10 @@
    System appearance follows the OS live via the theme adapter. */
 :root {
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --text-xs: 12px; --text-sm: 13px; --text-base: 15px; --text-card: 14px;
   --sidebar-width: 210px; --content-padding: 32px;
   --column-min-width: 220px; --card-padding: 14px; --column-gap: 16px; --card-gap: 12px;
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px;
   --radius-sm: 6px; --radius-md: 9px; --radius-lg: 14px;
-  --card-shadow: 0 1px 2px rgb(25 25 35 / 3%);
   --dialog-shadow: 0 24px 90px rgb(0 0 0 / 20%);
   --transition: 140ms ease;
 }
@@ -20,10 +17,8 @@
   --text: #30312f; --text-secondary: #74756f; --text-muted: #777872;
   --border: #e5e5e0; --border-strong: #cfcfc8;
   --accent: #7960ad; --accent-hover: #69509c; --accent-soft: #ece6f5; --accent-ink: #6d529f; --on-accent: #ffffff;
-  --todo: #90918d; --doing: #8d77bb; --blocked: #bd9250; --done: #739a85;
   --iris: #7c3aed; --sage: #188038; --sand: #b58a00; --slate: #4b5563;
   --rose: #d62976; --coral: #e05b12; --sky: #1665d8; --teal: #008ca8;
-  --blocked-bg: #f8f2e7; --blocked-ink: #8a6b33;
   --error-bg: #fff0ed; --error-text: #923d30; --backdrop: rgb(30 28 38 / 25%);
   --palette-shadow: 0 12px 40px rgb(0 0 0 / 16%), 0 0 0 1px rgb(0 0 0 / 6%);
 }
@@ -33,13 +28,10 @@
   --text: #e5e4e8; --text-secondary: #a4a3ab; --text-muted: #97969f;
   --border: #303136; --border-strong: #4c4c55;
   --accent: #a18acb; --accent-hover: #b49edc; --accent-soft: #332c43; --accent-ink: #c0a8e6; --on-accent: #1c1528;
-  --todo: #93949a; --doing: #aa91d7; --blocked: #cca76c; --done: #8ab89e;
   --iris: #a078ff; --sage: #42c466; --sand: #edc531; --slate: #a0a8b4;
   --rose: #f45b9c; --coral: #ff893e; --sky: #5c9aff; --teal: #20c4d9;
-  --blocked-bg: #373023; --blocked-ink: #dbba80;
   --error-bg: #422b29; --error-text: #ffb6a7; --backdrop: rgb(0 0 0 / 50%);
   --palette-shadow: 0 12px 40px rgb(0 0 0 / 50%), 0 0 0 1px rgb(255 255 255 / 8%);
-  --card-shadow: 0 1px 2px rgb(0 0 0 / 10%);
 }
 :root { --warning-surface: #fff3ef; --warning-border: #e9b6aa; --warning-strong: #bb5543; --warning-ink: #793b31; --on-warning: #fff; }
 :root[data-appearance='dark'] { --warning-surface: #352523; --warning-border: #794c44; --warning-strong: #c77967; --warning-ink: #edb5a8; --on-warning: #211916; }

@@ -45,6 +45,8 @@ export function createBoardStore(backend: StorageBackend) {
   let idle: Promise<void> = Promise.resolve();
   let draining = false;
   let loading = false;
+  // The most recent save's failure; cleared by the next successful save.
+  let lastError: unknown = null;
 
   // Never write a board that would fail to load next time.
   function encodeChecked(board: Board): string {
@@ -66,8 +68,10 @@ export function createBoardStore(backend: StorageBackend) {
         const contents = encodeChecked(job.board);
         revision = job.kind === 'replace' ? await backend.replace(contents) : await backend.save(revision!, contents);
         saved = job.board;
+        lastError = null;
         for (const waiter of job.waiters) waiter.resolve();
       } catch (error) {
+        lastError = error;
         const abandoned = queue.flatMap(queued => queued.waiters);
         queue = [];
         for (const waiter of [...job.waiters, ...abandoned]) waiter.reject(error);
@@ -120,8 +124,11 @@ export function createBoardStore(backend: StorageBackend) {
     saved(): Board | null {
       return saved;
     },
-    flush(): Promise<void> {
-      return idle;
+    // Waits for every pending save. `saved` is false when the most recent save failed,
+    // so the latest changes are not on disk (quitting asks before losing them).
+    async flush(): Promise<{ saved: boolean; error: unknown }> {
+      while (draining) await idle;
+      return { saved: lastError === null, error: lastError };
     },
     listBackups(): Promise<BackupInfo[]> {
       return backend.listBackups();

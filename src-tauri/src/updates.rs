@@ -5,12 +5,13 @@
 //! (e.g. it's running from the disk image), it offers the download in the browser
 //! instead. Packaged copies also check quietly about once a day.
 
+use crate::dialogs::{ask, tell};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::window::{ProgressBarState, ProgressBarStatus};
 use tauri::{AppHandle, Manager};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::MessageDialogKind;
 use tauri_plugin_updater::{Error as UpdateError, UpdaterExt};
 
 pub const WEBSITE: &str = "https://johnprice99.github.io/project-zero/";
@@ -29,26 +30,6 @@ const PENDING: u8 = 2;
 /// never fetched twice.
 #[derive(Default)]
 pub struct UpdateState(AtomicU8);
-
-fn tell(app: &AppHandle, title: &str, detail: &str, kind: MessageDialogKind) {
-    let mut dialog = app.dialog().message(detail).title(title).kind(kind);
-    if let Some(window) = app.get_webview_window("main") {
-        dialog = dialog.parent(&window);
-    }
-    dialog.blocking_show();
-}
-
-fn ask(app: &AppHandle, title: &str, detail: &str, yes: &str, no: &str) -> bool {
-    let mut dialog = app
-        .dialog()
-        .message(detail)
-        .title(title)
-        .buttons(MessageDialogButtons::OkCancelCustom(yes.into(), no.into()));
-    if let Some(window) = app.get_webview_window("main") {
-        dialog = dialog.parent(&window);
-    }
-    dialog.blocking_show()
-}
 
 pub fn open_in_browser(url: &str) {
     if let Err(error) = std::process::Command::new("/usr/bin/open").arg(url).spawn() {

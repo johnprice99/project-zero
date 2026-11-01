@@ -21,8 +21,8 @@ export interface PalettePrompt {
   submit: (value: string) => Promise<string | null>;
 }
 
-export const MAX_SHOWN = 60;
-export const MAX_RECENT = 8;
+const MAX_SHOWN = 60;
+const MAX_RECENT = 8;
 
 /** Subsequence match with bonuses for runs and word starts. Higher is better. */
 export function score(query: string, text: string): number | null {

@@ -19,7 +19,12 @@
     event.preventDefault();
     if (!title.trim() || saving) return;
     saving = true;
-    try { if (await onsave({ title: title.trim(), notes, blocked })) dialog.close(); } finally { saving = false; }
+    const submitted = { title: title.trim(), notes, blocked };
+    try {
+      // Edits made while saving stay open (and unsaved) rather than being discarded.
+      const unchanged = () => title.trim() === submitted.title && notes === submitted.notes && blocked === submitted.blocked;
+      if ((await onsave(submitted)) && unchanged()) dialog.close();
+    } finally { saving = false; }
   }
 </script>
 <dialog bind:this={dialog} class="task-dialog" aria-label="Edit task" onclose={onclose}>

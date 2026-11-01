@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { readableError } from './codec.ts';
 import { createBrowserBackend } from './browser-storage.ts';
 import { emptyBoard, type Board } from './model.ts';
 import { sampleBoard } from './sample.ts';
@@ -36,20 +37,23 @@ export async function bindNativeMenus(openPalette: () => void): Promise<() => vo
   return listen('project-zero:command-palette', openPalette);
 }
 
-// Rust holds quitting and closing the window until pending saves finish (or a short timeout).
-export async function bindExitFlush(flush: () => Promise<void>): Promise<() => void> {
+// Rust holds quitting and closing the window until pending saves finish. If the latest
+// change could not be saved, it asks whether to quit anyway.
+export async function bindExitFlush(flush: () => Promise<{ saved: boolean; error: unknown }>): Promise<() => void> {
   if (!isDesktop) return () => {};
   return listen('project-zero:before-exit', async () => {
+    let unsaved: string | null = 'Your latest changes could not be confirmed as saved.';
     try {
-      await flush();
+      const result = await flush();
+      unsaved = result.saved ? null : readableError(result.error, 'Your latest changes could not be saved.');
     } finally {
-      await invoke('allow_exit');
+      await invoke('allow_exit', { unsaved });
     }
   });
 }
 
-export const WEBSITE = 'https://johnprice99.github.io/project-zero/';
-export const ISSUES = 'https://github.com/johnprice99/project-zero/issues/new';
+const WEBSITE = 'https://johnprice99.github.io/project-zero/';
+const ISSUES = 'https://github.com/johnprice99/project-zero/issues/new';
 
 // Project Zero › About Project Zero shows the app's own About panel.
 export async function bindAbout(open: () => void): Promise<() => void> {

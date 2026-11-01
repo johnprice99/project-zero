@@ -15,8 +15,11 @@
     e.preventDefault();
     if (saving) return;
     saving = true;
+    const submitted = { name, color };
     try {
-      if (await onsave(name, color)) dialog.close();
+      // Editing: changes made while saving keep the dialog open. Creating always closes,
+      // so a second submit can't create the project twice.
+      if (await onsave(submitted.name, submitted.color)) { if (!project || (name === submitted.name && color === submitted.color)) dialog.close(); }
       else error = `Use a unique project name (up to ${limits.projectName} characters).`;
     } finally { saving = false; }
   }

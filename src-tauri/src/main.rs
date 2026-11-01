@@ -1,8 +1,8 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod dialogs;
 mod storage;
 mod updates;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use storage::{BackupInfo, LoadedBoard, Storage, StorageError};
 use tauri::{
@@ -11,8 +11,8 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
-/// How long to wait for the window to finish pending saves before quitting anyway.
-const EXIT_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long to wait for the window to answer before quitting anyway (only if it never does).
+const EXIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 struct ExitGate {
@@ -20,6 +20,8 @@ struct ExitGate {
     allowed: AtomicBool,
     /// Restart instead of quitting (after an update has been installed).
     restart: AtomicBool,
+    /// Changes whenever the window answers, so an earlier timeout can't force an exit.
+    generation: AtomicU64,
 }
 
 // Quitting or closing the window first asks the frontend to finish pending saves.
@@ -28,6 +30,7 @@ fn request_exit(app: &AppHandle) {
     if gate.requested.swap(true, Ordering::SeqCst) {
         return;
     }
+    let generation = gate.generation.fetch_add(1, Ordering::SeqCst) + 1;
     if app.emit("project-zero:before-exit", ()).is_err() {
         finish_exit(app);
         return;
@@ -35,7 +38,12 @@ fn request_exit(app: &AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(EXIT_TIMEOUT);
-        finish_exit(&handle);
+        let gate = handle.state::<ExitGate>();
+        if gate.requested.load(Ordering::SeqCst)
+            && gate.generation.load(Ordering::SeqCst) == generation
+        {
+            finish_exit(&handle);
+        }
     });
 }
 
@@ -58,8 +66,21 @@ fn finish_exit(app: &AppHandle) {
     app.exit(0);
 }
 
+/// The window has finished its pending saves. `unsaved` explains a change that couldn't
+/// be saved: then ask before quitting, as Typr does, so it can be retried.
 #[tauri::command]
-fn allow_exit(app: AppHandle) {
+async fn allow_exit(app: AppHandle, unsaved: Option<String>) {
+    let gate = app.state::<ExitGate>();
+    gate.generation.fetch_add(1, Ordering::SeqCst);
+    if let Some(problem) = unsaved {
+        let detail = format!("{problem} If you quit now, your latest changes will be lost.");
+        let title = "Your latest changes couldn’t be saved";
+        if dialogs::ask(&app, title, &detail, "Don’t Quit", "Quit Anyway") {
+            gate.restart.store(false, Ordering::SeqCst);
+            gate.requested.store(false, Ordering::SeqCst);
+            return;
+        }
+    }
     finish_exit(&app);
 }
 

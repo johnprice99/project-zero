@@ -14,9 +14,10 @@
   import { rememberRecent, type PalettePrompt } from './lib/commands';
   import { buildCommands } from './lib/command-registry';
   import TaskPalette from './components/TaskPalette.svelte';
-  import { limits, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Status, type View } from './lib/model';
+  import { limits, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
   import { readableError } from './lib/codec';
   import { ConflictError, type BackupInfo } from './lib/storage';
+  import { createCommitter } from './lib/commit';
   import { readTheme, applyTheme, type Theme } from './lib/theme';
 
   // One dialog at a time; a confirmation can appear above it.
@@ -46,7 +47,11 @@
   let taskCreationOpen = $derived(panel?.kind === 'new-task');
   let projectDialog = $derived(panel?.kind === 'project' ? panel : null);
   let selectedId = $derived(panel?.kind === 'task' ? panel.id : null);
-  let selected = $derived(board.tasks.find(t => t.id === selectedId));
+  // While a task or project is being deleted, its open editor stays on screen until the
+  // delete is saved, so a failed delete keeps the draft.
+  let deleting = $state<{ task?: Task; project?: Project } | null>(null);
+  let selected = $derived(board.tasks.find(t => t.id === selectedId) ?? (deleting?.task?.id === selectedId ? deleting?.task : undefined));
+  let dialogProject = $derived(board.projects.find(p => p.id === projectDialog?.id) ?? (deleting?.project?.id === projectDialog?.id ? deleting?.project : undefined) ?? null);
 
   function openPanel(next: Panel | null) { panel = next; draftDirty = false; }
   // Ignores a late close event from a dialog that has already been replaced.
@@ -59,7 +64,6 @@
   }
   untrack(() => { if (startup.error) blockStorage(startup.error); });
   onMount(() => {
-    applyTheme(theme);
     const preference = matchMedia('(prefers-color-scheme: dark)');
     const syncAppearance = () => applyTheme(theme);
     preference.addEventListener('change', syncAppearance);
@@ -74,27 +78,18 @@
   $effect(() => { applyTheme(theme); });
   $effect(() => { const width = sidebarWidth; if (!resizingSidebar) { try { writeSidebarWidth(width); } catch { /* Width still applies for this session. */ } } });
 
-  // Changes appear immediately and are saved in order. A failed save returns the board
-  // to its last saved state; dialogs stay open with their draft so it can be retried.
-  // Deletions use afterSave, so a failed delete leaves the task (and an open editor) in place.
-  async function commit(change: (current: Board) => Board, options: { afterSave?: boolean } = {}): Promise<boolean> {
+  // Changes appear immediately and are saved in order (src/lib/commit.ts). A failed save
+  // returns the board to its last saved state; dialogs stay open with their draft.
+  const save = createCommitter(untrack(() => store), { get: () => board, set: next => (board = next) });
+  async function commit(change: (current: Board) => Board): Promise<boolean> {
     if (storageBlocked || reloading) return false;
-    const before = board;
-    const next = change(board);
-    if (next === board) return false;
-    if (!options.afterSave) board = next;
-    try {
-      await store.save(next);
-      if (options.afterSave) board = change(board);
-      saveError = '';
-      return true;
-    } catch (error) {
-      if (!options.afterSave) board = store.saved() ?? before;
-      saveError = readableError(error, 'Your changes could not be saved. Try again.');
-      // One conflict rejects every queued save; reload once for all of them.
-      if (error instanceof ConflictError) await (reloading ??= reloadAfterConflict().finally(() => (reloading = null)));
-      return false;
-    }
+    const result = await save(change);
+    if (result.ok) { saveError = ''; return true; }
+    if (result.error === null) return false;
+    saveError = readableError(result.error, 'Your changes could not be saved. Try again.');
+    // One conflict rejects every queued save; reload once for all of them.
+    if (result.error instanceof ConflictError) await (reloading ??= reloadAfterConflict().finally(() => (reloading = null)));
+    return false;
   }
   async function reloadAfterConflict() {
     try {
@@ -239,7 +234,14 @@
     const project = board.projects.find(p => p.id === id);
     if (!project || storageBlocked) return;
     const count = board.tasks.filter(t => t.projectId === id).length;
-    confirmation = { title: 'Delete project?', message: `Permanently delete “${project.name}” and all ${count} of its tasks? This cannot be undone.`, action: 'Delete project', run: async () => { if (!(await commit(b => deleteProject(b, id), { afterSave: true }))) return; switchView('all'); closePanel('project'); } };
+    confirmation = { title: 'Delete project?', message: `Permanently delete “${project.name}” and all ${count} of its tasks? This cannot be undone.`, action: 'Delete project', run: async () => {
+      const viewing = projectId === id;
+      deleting = { project };
+      if (viewing) switchView('all');
+      const ok = await commit(b => deleteProject(b, id));
+      deleting = null;
+      if (ok) closePanel('project'); else if (viewing) openProject(id);
+    } };
   }
   function startSidebarResize(e: PointerEvent) {
     e.preventDefault();
@@ -256,14 +258,14 @@
   }
   function askDelete(ids: string[]) {
     if (storageBlocked || !ids.length) return;
-    confirmation = { title: ids.length === 1 ? 'Delete task?' : 'Clear completed tasks?', message: ids.length === 1 ? `Permanently delete “${board.tasks.find(t => t.id === ids[0])?.title}”? This cannot be undone.` : `Permanently delete these ${ids.length} completed tasks from this view? This cannot be undone.`, action: ids.length === 1 ? 'Delete task' : 'Clear completed tasks', run: async () => { if (!(await commit(b => deleteTasks(b, ids), { afterSave: true }))) return; if (ids.includes(selectedId ?? '')) closeTask(); } };
+    confirmation = { title: ids.length === 1 ? 'Delete task?' : 'Clear completed tasks?', message: ids.length === 1 ? `Permanently delete “${board.tasks.find(t => t.id === ids[0])?.title}”? This cannot be undone.` : `Permanently delete these ${ids.length} completed tasks from this view? This cannot be undone.`, action: ids.length === 1 ? 'Delete task' : 'Clear completed tasks', run: async () => { deleting = { task: selected }; const ok = await commit(b => deleteTasks(b, ids)); deleting = null; if (ok && ids.includes(selectedId ?? '')) closeTask(); } };
   }
   function clearDone() { askDelete(board.tasks.filter(t => t.status === board.completedColumnId && (!projectId || t.projectId === projectId) && (view !== 'today' || t.today)).map(t => t.id)); }
   function askClearAllCompleted() {
     const ids = board.tasks.filter(t => t.status === board.completedColumnId).map(t => t.id);
     if (storageBlocked || !ids.length) return;
     const tasks = ids.length === 1 ? 'the 1 completed task' : `all ${ids.length} completed tasks`;
-    confirmation = { title: 'Clear all completed tasks?', message: `Permanently delete ${tasks} across every project? This cannot be undone.`, action: 'Clear completed tasks', run: () => void commit(b => deleteTasks(b, ids), { afterSave: true }) };
+    confirmation = { title: 'Clear all completed tasks?', message: `Permanently delete ${tasks} across every project? This cannot be undone.`, action: 'Clear completed tasks', run: () => void commit(b => deleteTasks(b, ids)) };
   }
   function askClearToday() {
     const count = board.tasks.filter(t => t.today).length;
@@ -327,7 +329,7 @@
     onclose={() => closePanel('new-task')}/>
 {/if}
 {#if projectDialog}
-  <ProjectDialog project={board.projects.find(project => project.id === projectDialog?.id) ?? null}
+  <ProjectDialog project={dialogProject}
     {saveError} ondirty={(dirty) => draftDirty = dirty} onsave={saveProjectDetails}
     onclose={() => closePanel('project')}/>
 {/if}
