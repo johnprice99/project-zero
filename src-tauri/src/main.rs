@@ -1,11 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod storage;
+mod updates;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use storage::{BackupInfo, LoadedBoard, Storage, StorageError};
 use tauri::{
-    menu::{AboutMetadata, MenuBuilder, MenuItem, SubmenuBuilder},
+    menu::{MenuBuilder, MenuItem, SubmenuBuilder},
     AppHandle, Emitter, Manager, RunEvent, State, WindowEvent,
 };
 use tauri_plugin_dialog::DialogExt;
@@ -17,6 +18,8 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(3);
 struct ExitGate {
     requested: AtomicBool,
     allowed: AtomicBool,
+    /// Restart instead of quitting (after an update has been installed).
+    restart: AtomicBool,
 }
 
 // Quitting or closing the window first asks the frontend to finish pending saves.
@@ -36,10 +39,22 @@ fn request_exit(app: &AppHandle) {
     });
 }
 
-fn finish_exit(app: &AppHandle) {
+/// Restarts into an installed update once pending saves have finished, as quitting does.
+pub fn request_restart(app: &AppHandle) {
     app.state::<ExitGate>()
-        .allowed
+        .restart
         .store(true, Ordering::SeqCst);
+    request_exit(app);
+}
+
+fn finish_exit(app: &AppHandle) {
+    let gate = app.state::<ExitGate>();
+    if gate.allowed.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if gate.restart.load(Ordering::SeqCst) {
+        app.restart();
+    }
     app.exit(0);
 }
 
@@ -120,6 +135,21 @@ async fn import_board(app: AppHandle) -> Result<Option<String>, StorageError> {
     storage::read_import(&path).map(Some)
 }
 
+#[tauri::command]
+async fn check_for_updates(app: AppHandle) {
+    updates::check_for_updates(app, false).await;
+}
+
+/// Only Project Zero's own pages can be opened.
+#[tauri::command]
+fn open_link(target: String) {
+    match target.as_str() {
+        "website" => updates::open_in_browser(updates::WEBSITE),
+        "issues" => updates::open_in_browser(updates::ISSUES),
+        _ => {}
+    }
+}
+
 fn main() {
     let builder = tauri::Builder::default();
     // Only one copy may write the board. Development builds keep their own data folder and
@@ -133,7 +163,9 @@ fn main() {
     }));
     let app = builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExitGate::default())
+        .manage(updates::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             load_board,
             save_board,
@@ -142,15 +174,22 @@ fn main() {
             read_backup,
             export_board,
             import_board,
+            check_for_updates,
+            open_link,
             allow_exit
         ])
         .setup(|app| {
             let data = app.path().app_data_dir()?;
+            // Packaged copies check for updates quietly about once a day.
+            #[cfg(not(debug_assertions))]
+            updates::check_daily(app.handle().clone(), data.join("update-check.json"));
             // Development builds keep their own data so they never touch the real board.
             #[cfg(debug_assertions)]
             let data = data.join("development");
             app.manage(Storage::new(data));
 
+            let item =
+                |id: &str, label: &str| MenuItem::with_id(app, id, label, true, None::<&str>);
             let command_palette = MenuItem::with_id(
                 app,
                 "command-palette",
@@ -161,7 +200,8 @@ fn main() {
             let quit =
                 MenuItem::with_id(app, "quit", "Quit Project Zero", true, Some("CmdOrCtrl+Q"))?;
             let app_menu = SubmenuBuilder::new(app, "Project Zero")
-                .about(Some(AboutMetadata::default()))
+                .item(&item("about", "About Project Zero")?)
+                .item(&item("check-updates", "Check for Updates…")?)
                 .separator()
                 .hide()
                 .hide_others()
@@ -188,18 +228,40 @@ fn main() {
                 .separator()
                 .fullscreen()
                 .build()?;
+            let help_menu = SubmenuBuilder::new(app, "Help")
+                .item(&item("website", "Project Zero Website")?)
+                .item(&item("report-problem", "Report a Problem")?)
+                .build()?;
             let menu = MenuBuilder::new(app)
-                .items(&[&app_menu, &file_menu, &edit_menu, &window_menu])
+                .items(&[&app_menu, &file_menu, &edit_menu, &window_menu, &help_menu])
                 .build()?;
             app.set_menu(menu)?;
-            app.on_menu_event(|handle, event| match event.id().0.as_str() {
-                "command-palette" => {
-                    if let Err(error) = handle.emit("project-zero:command-palette", ()) {
+            // macOS adds menu search to Help and the window list to Window.
+            #[cfg(target_os = "macos")]
+            {
+                window_menu.set_as_windows_menu_for_nsapp()?;
+                help_menu.set_as_help_menu_for_nsapp()?;
+            }
+            app.on_menu_event(|handle, event| {
+                let emit = |name: &str| {
+                    if let Err(error) = handle.emit(name, ()) {
                         eprintln!("Menu action failed: {error}");
                     }
+                };
+                match event.id().0.as_str() {
+                    "command-palette" => emit("project-zero:command-palette"),
+                    "about" => emit("project-zero:about"),
+                    "check-updates" => {
+                        tauri::async_runtime::spawn(updates::check_for_updates(
+                            handle.clone(),
+                            false,
+                        ));
+                    }
+                    "website" => updates::open_in_browser(updates::WEBSITE),
+                    "report-problem" => updates::open_in_browser(updates::ISSUES),
+                    "quit" => request_exit(handle),
+                    _ => {}
                 }
-                "quit" => request_exit(handle),
-                _ => {}
             });
             Ok(())
         })

@@ -11,7 +11,9 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "tauri": "tauri",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dist": "node scripts/release.mjs",
+    "update-key": "tauri signer generate -w ~/.config/project-zero/update-key"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

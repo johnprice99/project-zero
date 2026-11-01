@@ -6,7 +6,8 @@
   import TaskEditor from './components/TaskEditor.svelte';
   import Icon from './components/Icon.svelte';
   import Settings from './components/Settings.svelte';
-  import { bindExitFlush, bindNativeMenus, type Startup } from './lib/native';
+  import { bindAbout, bindExitFlush, bindNativeMenus, checkForUpdates, isDesktop, openLink, type Startup } from './lib/native';
+  import AboutPanel from './components/AboutPanel.svelte';
   import type { BoardStore } from './lib/storage';
   import NewTaskDialog from './components/NewTaskDialog.svelte';
   import { readSidebarWidth, writeSidebarWidth, clampSidebarWidth, sidebarRange, readRecentCommands, writeRecentCommands } from './lib/preferences';
@@ -20,7 +21,7 @@
 
   // One dialog at a time; a confirmation can appear above it.
   type Panel =
-    | { kind: 'palette'; prompt?: PalettePrompt } | { kind: 'settings' } | { kind: 'new-task' }
+    | { kind: 'palette'; prompt?: PalettePrompt } | { kind: 'about' } | { kind: 'settings' } | { kind: 'new-task' }
     | { kind: 'task'; id: string } | { kind: 'project'; id: string | null };
   // main.ts loads the board before mounting, so the first frame already shows it.
   let { store, startup }: { store: BoardStore; startup: Startup } = $props();
@@ -66,6 +67,7 @@
     const cleanups: (() => void)[] = [];
     const keep = (cleanup: () => void) => { if (disposed) cleanup(); else cleanups.push(cleanup); };
     void bindNativeMenus(openPalette).then(keep).catch(() => { nativeError = 'Mac menu shortcuts could not be connected. Try Cmd+Shift+P in this window.'; });
+    void bindAbout(openAbout).then(keep).catch(error => console.error('About Project Zero is unavailable from the menu.', error));
     void bindExitFlush(() => store.flush()).then(keep).catch(error => console.error('Saving before quit is unavailable.', error));
     return () => { disposed = true; cleanups.forEach(cleanup => cleanup()); preference.removeEventListener('change', syncAppearance); };
   });
@@ -156,10 +158,17 @@
     if (confirmation || (paletteOpen && Date.now() - paletteOpenedAt < 300)) return;
     paletteOpenedAt = Date.now();
     void store.listBackups().then(list => backups = list, () => backups = []);
-    const open = () => openPanel({ kind: 'palette' });
+    replaceForm(() => openPanel({ kind: 'palette' }), 'open the command palette');
+  }
+  // Asks before an unsaved form is replaced.
+  function replaceForm(open: () => void, purpose: string) {
     if (draftDirty) {
-      confirmation = { title: 'Discard unsaved changes?', message: 'Your edits have not been saved. Discard them and open the command palette?', action: 'Discard changes', run: open };
+      confirmation = { title: 'Discard unsaved changes?', message: `Your edits have not been saved. Discard them and ${purpose}?`, action: 'Discard changes', run: open };
     } else open();
+  }
+  function openAbout() {
+    if (confirmation || panel?.kind === 'about') return;
+    replaceForm(() => openPanel({ kind: 'about' }), 'show About Project Zero');
   }
   async function runCommand(run: () => unknown) {
     closePanel('palette');
@@ -218,12 +227,14 @@
     toggleBlocked: (id) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? patchTask(b, id, { blocked: !task.blocked }) : b; }),
     deleteTask: (id) => askDelete([id]),
     clearDone, clearAllDone: askClearAllCompleted, clearToday: askClearToday,
+    about: openAbout, checkForUpdates: () => void checkForUpdates().catch(error => saveError = readableError(error, 'Couldn’t check for updates.')),
+    website: () => void openLink('website'), reportProblem: () => void openLink('issues'),
     addColumn: () => promptForColumn(null), renameColumn: promptForColumn,
     removeColumn: requestColumnRemoval, export: () => void exportTasks(),
     restoreFile: () => void askRestore(() => store.importFile(), 'this file'),
     restoreBackup: (id) => void askRestore(() => store.readBackup(id), 'this backup'),
-  }, { theme, backups }));
-  let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.id.startsWith('restore-')) : allCommands);
+  }, { theme, backups, desktop: isDesktop }));
+  let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.group === 'Help' || command.id.startsWith('restore-')) : allCommands);
   function askDeleteProject(id: string) {
     const project = board.projects.find(p => p.id === id);
     if (!project || storageBlocked) return;
@@ -290,6 +301,9 @@
 
   </main>
 </div>
+{#if panel?.kind === 'about'}
+  <AboutPanel onclose={() => closePanel('about')}/>
+{/if}
 {#if settingsOpen}
   <Settings {board} {saveError} {theme} ondirty={(dirty) => draftDirty = dirty} onremove={removeBoardColumn} onrename={saveColumnName}
     onadd={createColumn} ontheme={(value) => theme = value} onclose={() => closePanel('settings')}/>

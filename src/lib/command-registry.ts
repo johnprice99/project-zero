@@ -22,6 +22,10 @@ export interface CommandActions {
   deleteTask(id: string): void;
   clearDone(): void;
   clearAllDone(): void;
+  about(): void;
+  checkForUpdates(): void;
+  website(): void;
+  reportProblem(): void;
   clearToday(): void;
   addColumn(): void;
   renameColumn(id: string): void;
@@ -54,9 +58,9 @@ export function buildCommands(
   view: View,
   projectId: string | null,
   a: CommandActions,
-  context: { theme?: Theme; backups?: BackupInfo[] } = {},
+  context: { theme?: Theme; backups?: BackupInfo[]; desktop?: boolean } = {},
 ): Command[] {
-  const { theme, backups = [] } = context;
+  const { theme, backups = [], desktop = false } = context;
   const active = board.tasks.filter(t => t.status !== board.completedColumnId);
   const projectName = (id: string) => board.projects.find(p => p.id === id)?.name ?? '';
   const taskItems = (tasks: typeof board.tasks, key: string, action: (id: string) => void): Command[] =>
@@ -235,6 +239,10 @@ export function buildCommands(
       group: 'Data',
       children: backups.map(backup => backupCommand(backup, a)),
     },
+    { id: 'about', label: 'About Project Zero', group: 'Help', run: a.about },
+    ...(desktop ? [{ id: 'check-updates', label: 'Check for Updates…', group: 'Help', run: a.checkForUpdates }] : []),
+    { id: 'website', label: 'Project Zero Website', group: 'Help', run: a.website },
+    { id: 'report-problem', label: 'Report a Problem', group: 'Help', run: a.reportProblem },
   ];
   if (board.tasks.some(t => t.today))
     roots.push({ id: 'clear-today', label: "Clear today's work", group: 'Cleanup', run: a.clearToday });

@@ -37,5 +37,13 @@
       "signingIdentity": "-",
       "minimumSystemVersion": "11.0"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5MTYzQjcxOEFDMjk2NTMKUldSVGxzS0tjVHNXZVRJVnhJSkQxQmR5TlhtYTh1clVuMmJUV0FpLzZYSEVDQVIvZFJwc1d3YkgK",
+      "endpoints": [
+        "https://github.com/johnprice99/project-zero/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

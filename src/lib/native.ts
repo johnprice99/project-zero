@@ -47,3 +47,28 @@ export async function bindExitFlush(flush: () => Promise<void>): Promise<() => v
     }
   });
 }
+
+export const WEBSITE = 'https://johnprice99.github.io/project-zero/';
+export const ISSUES = 'https://github.com/johnprice99/project-zero/issues/new';
+
+// Project Zero › About Project Zero shows the app's own About panel.
+export async function bindAbout(open: () => void): Promise<() => void> {
+  if (!isDesktop) return () => {};
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen('project-zero:about', open);
+}
+
+// The desktop app shows its own native dialogs while checking and installing.
+export async function checkForUpdates(): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('check_for_updates');
+}
+
+export async function openLink(target: 'website' | 'issues'): Promise<void> {
+  if (!isDesktop) {
+    window.open(target === 'website' ? WEBSITE : ISSUES, '_blank', 'noopener');
+    return;
+  }
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('open_link', { target });
+}

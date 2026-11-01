@@ -13,6 +13,7 @@ serde_json = { version = "1.0.154", features = ["raw_value"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 
 [profile.release]
 codegen-units = 1

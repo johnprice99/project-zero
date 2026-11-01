@@ -134,3 +134,13 @@ textarea.notes-input { resize: vertical; }
 .lane-columns { padding-top: 16px; }
 .lane-heading + .lane-columns { padding-top: 0; }
 @media (max-width: 580px) { .sidebar { width: 54px; } .sidebar-resizer { display: none; } }
+/* The About panel matches Typr's: centred under the title bar like the palette, no dimmed backdrop. */
+.about-dialog { inset: 16vh 0 auto; margin: 0 auto; width: 300px; max-width: 92vw; padding: 22px 26px 26px; border: 0; border-radius: 12px; color: var(--text); background: var(--surface); box-shadow: var(--palette-shadow); font-size: 13px; text-align: center; }
+.about-dialog::backdrop { background: transparent; backdrop-filter: none; }
+.about-dialog img { width: 96px; height: 96px; margin-top: 6px; }
+.about-dialog h2 { margin: 10px 0 2px; font-size: 18px; font-weight: 600; }
+.about-dialog p { margin: 4px 0; }
+.about-version { color: var(--text-muted); }
+.about-dialog .about-close { margin-top: 14px; padding: 4px 8px; border: 0; border-radius: 5px; font: inherit; color: var(--accent); background: transparent; }
+.about-dialog .about-close:hover { background: transparent; }
+.about-dialog .about-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
