@@ -16,7 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = 'johnprice99/project-zero';
 // Fixed names, so the website's link (the newest release's disk image) keeps working.
 const NAME = 'Project-Zero-mac-arm64';
-const KEY = process.env.PROJECT_ZERO_UPDATE_KEY || join(homedir(), '.config', 'project-zero', 'update-key');
+const KEY = join(homedir(), '.config', 'project-zero', 'update-key');
 const OUT = join(ROOT, 'dist');
 const BUNDLE = join(ROOT, 'src-tauri', 'target', 'release', 'bundle');
 
@@ -31,7 +31,7 @@ const signing = existsSync(KEY);
 if (!signing) {
   console.warn(`\n⚠  No update signing key at ${KEY}.`);
   console.warn('   Building the disk image only: installed copies can’t update themselves to this release.');
-  console.warn('   Restore the key from your backup, or make a new one with `npm run update-key`.\n');
+  console.warn('   Restore the key from your backup, or see README › Releasing to make a new one.\n');
 }
 
 rmSync(OUT, { recursive: true, force: true });

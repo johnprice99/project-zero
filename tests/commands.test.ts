@@ -123,12 +123,10 @@ test('clear all completed tasks is always offered, and the view-only version onl
   assert.deepEqual(calls.at(-1), { action: 'clearAllDone', args: [] });
 });
 
-test('help commands are listed, and Check for Updates only in the desktop app', () => {
-  const { actions } = registry();
-  const help = (desktop: boolean) =>
-    buildCommands(sampleBoard(), 'all', null, actions, { desktop })
-      .filter(c => c.group === 'Help')
-      .map(c => c.label);
-  assert.deepEqual(help(true), ['About Project Zero', 'Check for Updates…', 'Project Zero Website', 'Report a Problem']);
-  assert.deepEqual(help(false), ['About Project Zero', 'Project Zero Website', 'Report a Problem']);
+test('help commands are listed', () => {
+  const { commands } = registry();
+  assert.deepEqual(
+    commands.filter(c => c.group === 'Help').map(c => c.label),
+    ['About Project Zero', 'Check for Updates…', 'Project Zero Website', 'Report a Problem'],
+  );
 });

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ConflictError, type BackupInfo, type StorageBackend } from './storage.ts';
 
-// Desktop storage. Rust owns the file: atomic replacement, revision checks, and backups
+// Rust's board file. Rust owns it: atomic replacement, revision checks, and backups
 // (see src-tauri/src/storage.rs). The webview has no direct file access.
 interface RustError {
   kind: 'conflict' | 'invalid' | 'io';

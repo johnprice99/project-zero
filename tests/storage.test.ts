@@ -1,63 +1,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createBrowserBackend } from '../src/lib/browser-storage.ts';
-import { ConflictError, createBoardStore, type StorageBackend } from '../src/lib/storage.ts';
+import { ConflictError, createBoardStore } from '../src/lib/storage.ts';
 import { sampleBoard } from '../src/lib/sample.ts';
 import { patchTask, type Board } from '../src/lib/model.ts';
+import { controlledBackend, memoryBackend, type Disk } from './backends.ts';
 
-const key = 'project-zero.board';
 const settle = () => new Promise(resolve => setImmediate(resolve));
-function memoryStorage() {
-  const values = new Map<string, string>();
-  return {
-    values,
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => void values.set(key, value),
-  };
-}
 const titled = (title: string, board: Board = sampleBoard()) => patchTask(board, 'sample-0', { title });
-
-// A backend whose saves finish only when the test says so.
-function controlledBackend() {
-  const saves: { board: Board; finish: () => void; fail: (error: Error) => void }[] = [];
-  let revision = 0;
-  const backend: StorageBackend = {
-    load: async () => null,
-    save: (_expected, contents) =>
-      new Promise((resolve, reject) => {
-        saves.push({ board: JSON.parse(contents), finish: () => resolve(++revision), fail: reject });
-      }),
-    replace: async () => ++revision,
-    listBackups: async () => [],
-    readBackup: async () => '',
-    exportFile: async () => true,
-    importFile: async () => null,
-  };
-  return { backend, saves };
-}
+const disk = (): Disk => ({ board: null, revision: 0, replaced: null });
 
 test('first launch and later saves persist across restarts', async () => {
-  const storage = memoryStorage();
-  const first = createBoardStore(createBrowserBackend(storage));
+  const shared = disk();
+  const first = createBoardStore(memoryBackend(shared));
   assert.deepEqual(await first.load(), { board: null, source: 'empty' });
   await first.save(sampleBoard());
   await first.save(titled('Second save'));
-  assert.deepEqual(await createBoardStore(createBrowserBackend(storage)).load(), {
-    board: titled('Second save'),
-    source: 'saved',
-  });
+  assert.deepEqual(await createBoardStore(memoryBackend(shared)).load(), { board: titled('Second save'), source: 'saved' });
 });
 
 test('an unreadable saved board is never overwritten by normal saves', async () => {
-  const storage = memoryStorage();
-  storage.values.set(key, '{broken');
-  const store = createBoardStore(createBrowserBackend(storage));
+  const shared = { ...disk(), board: '{broken' };
+  const store = createBoardStore(memoryBackend(shared));
   await assert.rejects(store.load());
   await assert.rejects(store.save(sampleBoard()), /not been loaded/);
-  assert.equal(storage.values.get(key), '{broken');
+  assert.equal(shared.board, '{broken');
   // An explicit restore may replace it, keeping the unreadable copy.
   await store.replace(sampleBoard());
-  assert.equal(storage.values.get('project-zero.board.before-restore'), '{broken');
+  assert.equal(shared.replaced, '{broken');
   assert.deepEqual((await store.load()).board, sampleBoard());
 });
 
@@ -117,26 +86,26 @@ test('flush waits for pending saves', async () => {
   assert.equal(flushed, true);
 });
 
-test('a stale window cannot silently overwrite a newer save', async () => {
-  const storage = memoryStorage();
-  const first = createBoardStore(createBrowserBackend(storage));
+test('a stale copy cannot silently overwrite a newer save', async () => {
+  const shared = disk();
+  const first = createBoardStore(memoryBackend(shared));
   await first.load();
   await first.save(sampleBoard());
-  const second = createBoardStore(createBrowserBackend(storage));
+  const second = createBoardStore(memoryBackend(shared));
   await second.load();
-  await first.save(titled('From the first window'));
-  await assert.rejects(second.save(titled('From the stale window')), ConflictError);
-  assert.equal((await second.load()).board?.tasks[0].title, 'From the first window');
+  await first.save(titled('From the first copy'));
+  await assert.rejects(second.save(titled('From the stale copy')), ConflictError);
+  assert.equal((await second.load()).board?.tasks[0].title, 'From the first copy');
 });
 
 test('a board that would not load again is never written', async () => {
-  const storage = memoryStorage();
-  const store = createBoardStore(createBrowserBackend(storage));
+  const shared = disk();
+  const store = createBoardStore(memoryBackend(shared));
   await store.load();
   await store.save(sampleBoard());
   const broken = { ...sampleBoard(), tasks: [...sampleBoard().tasks, sampleBoard().tasks[0]] };
   await assert.rejects(store.save(broken), /would leave the board unreadable.*duplicate id/);
-  assert.deepEqual((await createBoardStore(createBrowserBackend(storage)).load()).board, sampleBoard());
+  assert.deepEqual((await createBoardStore(memoryBackend(shared)).load()).board, sampleBoard());
 });
 
 test('reloading waits for the save in progress and refuses new saves until it finishes', async () => {

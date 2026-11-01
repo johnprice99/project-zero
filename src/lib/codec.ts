@@ -126,7 +126,7 @@ export function encodeBoard(board: Board): StoredBoard {
   return { schema: SCHEMA, ...board };
 }
 
-// Decode a saved board document in the desktop format, applying any schema migrations.
+// Decode a saved board document, applying any schema migrations.
 export function decodeBoard(value: unknown): Board {
   let doc = record(value, 'Saved board');
   const schema = doc.schema;

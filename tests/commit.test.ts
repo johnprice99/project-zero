@@ -1,28 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCommitter } from '../src/lib/commit.ts';
-import { createBoardStore, type StorageBackend } from '../src/lib/storage.ts';
+import { createBoardStore } from '../src/lib/storage.ts';
+import { controlledBackend } from './backends.ts';
 import { sampleBoard } from '../src/lib/sample.ts';
-import { deleteTasks, patchTask, type Board } from '../src/lib/model.ts';
+import { deleteTasks, patchTask } from '../src/lib/model.ts';
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 // A board on screen, a store, and a backend whose saves finish when the test says so.
 async function session() {
-  const saves: { board: Board; finish: () => void; fail: (error: Error) => void }[] = [];
-  let revision = 0;
-  const backend: StorageBackend = {
-    load: async () => null,
-    save: (_expected, contents) =>
-      new Promise((resolve, reject) => {
-        saves.push({ board: JSON.parse(contents), finish: () => resolve(++revision), fail: reject });
-      }),
-    replace: async () => ++revision,
-    listBackups: async () => [],
-    readBackup: async () => '',
-    exportFile: async () => true,
-    importFile: async () => null,
-  };
+  const { backend, saves } = controlledBackend();
   const store = createBoardStore(backend);
   await store.load();
   let board = sampleBoard();

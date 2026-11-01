@@ -1,8 +1,8 @@
 import { BoardFormatError, decodeAnyBoard, decodeBoard, encodeBoard } from './codec.ts';
 import type { Board } from './model.ts';
 
-// Where the board is kept. The desktop app saves to a file through Rust; the browser
-// preview uses localStorage. Both store a JSON board document with a revision number.
+// Where the board is kept: a file, by Rust (tauri-storage.ts); the tests use one in memory.
+// It holds the JSON board document with a revision number.
 export interface StorageBackend {
   load(): Promise<{ revision: number; contents: string } | null>;
   // Refuses with ConflictError unless the stored revision still matches.

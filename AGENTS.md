@@ -5,7 +5,7 @@ A small macOS (Apple silicon only) to-do board. Tauri 2 + Svelte 5 + TypeScript,
 ## Commands
 
 - `npm run check` — Svelte/TypeScript, Prettier, unit tests. With `cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test`, run before every commit.
-- `npm run tauri build` — the app (about a minute). `npm run dist` — a release into `dist/`. `npm run icon` — every icon, from the artwork in `src-tauri/icons/` (needs Xcode 26+). `npm run screenshots` — the website's pictures.
+- `npm run tauri dev` — the app with live reload (development board). `npm run tauri build` — the app (about a minute). `npm run dist` — a release into `dist/`.
 
 ## Layout
 
@@ -18,12 +18,13 @@ A small macOS (Apple silicon only) to-do board. Tauri 2 + Svelte 5 + TypeScript,
 ## Rules
 
 - The owner likes the interface as it is. Don't change how it looks or behaves unless asked, and keep markup and CSS changes to what was asked for.
-- Tests are unit tests, for what's critical to not losing work (model, codec, save queue, commit, the palette's commands, Rust storage). No browser or end-to-end tests. Don't add tools or dependencies without asking (Playwright is only for `npm run screenshots`).
+- Tests are unit tests, for what's critical to not losing work (model, codec, save queue, commit, the palette's commands, Rust storage), using the in-memory backend in `tests/backends.ts`. No browser or end-to-end tests. Don't add tools or dependencies without asking.
 - Prettier formats the TypeScript and scripts. Svelte files are formatted by hand because reflowing markup can change spacing, and CSS, HTML, Markdown and JSON are left alone too (see `.prettierignore`). Rust uses `cargo fmt`.
 - Typr (`~/work/typr`) is the model for the palette (one list at a time, fuzzy matching, recent first, Esc closes), the About panel, updates, Help, the website, the icon and releasing. Keep them in step with it.
-- Never touch the owner's board (`~/Library/Application Support/com.johnprice.projectzero/`). Development builds use its `development` folder; screenshots use a made-up board.
+- Never touch the owner's board (`~/Library/Application Support/com.johnprice.projectzero/`). Development builds use its `development` folder.
 - Ask before anything disruptive: installing into `/Applications`, quitting the owner's copy, pushing, publishing.
 - Don't bump the version or release unless asked.
+- Remove what won't be needed again (one-off scripts, unused code, stale docs) rather than keeping it just in case; git history keeps it.
 - Before committing: review the diff (a subagent review for anything non-trivial), fix what it finds, run the checks.
 
 ## Gotchas
@@ -33,6 +34,6 @@ A small macOS (Apple silicon only) to-do board. Tauri 2 + Svelte 5 + TypeScript,
 - Single instance applies to release builds only: its lock is per bundle id, so `tauri dev` couldn't run alongside the installed app.
 - Quit, Close Window and restart-after-update go through the exit gate in `main.rs`. The window finishes its saves (`bindExitFlush`) and calls `allow_exit`; if the last save failed, it asks Don't Quit / Quit Anyway. Quit is a custom menu item so it passes through the gate. Quitting from the Dock, logging out and shutting down skip it.
 - While a task or project is being deleted, `App.svelte` keeps its snapshot in `deleting` so an open editor stays until the delete is saved (a failed delete keeps the draft).
-- The icon: `npm run icon` compiles `src-tauri/icons/ProjectZero.icon` into `src-tauri/icons/Assets.car` (copied into the bundle by `bundle.macOS.files`, found through `CFBundleIconName` in `src-tauri/Info.plist`) and the `icon.icns` fallback. `icon.png` is built into the program uncompressed as the window icon, so keep it at 128 px. Icon Composer ignores a gradient's direction, so the diagonal gradient is an image layer. `Assets.car` comes out slightly different on every run even when nothing changed; commit it only when the icon has.
+- The icon is precompiled: `src-tauri/icons/Assets.car` (copied into the bundle by `bundle.macOS.files`, found through `CFBundleIconName` in `src-tauri/Info.plist`) and the `icon.icns` fallback. `icon.png` is built into the program uncompressed as the window icon, so keep it at 128 px. The script that made them is `scripts/icon.mjs` in commit 5e2a959 (Icon Composer ignores a gradient's direction, so the diagonal gradient was an image layer).
 - Release file names are fixed (`Project-Zero-mac-arm64.*`, tag = version without “v”) because the website and the updater depend on them. `Cargo.toml`'s version must match `package.json`'s; `npm run dist` checks.
 - The update signing key is `~/.config/project-zero/update-key`; never commit it.

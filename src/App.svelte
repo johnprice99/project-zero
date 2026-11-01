@@ -6,7 +6,7 @@
   import TaskEditor from './components/TaskEditor.svelte';
   import Icon from './components/Icon.svelte';
   import Settings from './components/Settings.svelte';
-  import { bindAbout, bindExitFlush, bindNativeMenus, checkForUpdates, isDesktop, openLink, type Startup } from './lib/native';
+  import { bindAbout, bindExitFlush, bindNativeMenus, checkForUpdates, openLink, type Startup } from './lib/native';
   import AboutPanel from './components/AboutPanel.svelte';
   import type { BoardStore } from './lib/storage';
   import NewTaskDialog from './components/NewTaskDialog.svelte';
@@ -228,7 +228,7 @@
     removeColumn: requestColumnRemoval, export: () => void exportTasks(),
     restoreFile: () => void askRestore(() => store.importFile(), 'this file'),
     restoreBackup: (id) => void askRestore(() => store.readBackup(id), 'this backup'),
-  }, { theme, backups, desktop: isDesktop }));
+  }, { theme, backups }));
   let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.group === 'Help' || command.id.startsWith('restore-')) : allCommands);
   function askDeleteProject(id: string) {
     const project = board.projects.find(p => p.id === id);

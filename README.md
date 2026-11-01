@@ -18,12 +18,9 @@ A clear view of what's next. A small to-do board for your Mac that works like a 
 
 ```sh
 npm install
-npm run dev          # browser preview at http://127.0.0.1:1420, with its own board in the browser
-npm run tauri dev    # the desktop app, with a separate development board
+npm run tauri dev    # the app with live reload, using a separate development board
 npm run tauri build  # Project Zero.app, in src-tauri/target/release/bundle/macos/
 npm run dist         # a release (disk image and signed update), in dist/
-npm run icon         # rebuild every icon from the artwork in src-tauri/icons/ (needs Xcode 26 or later)
-npm run screenshots  # retake the website's screenshots
 ```
 
 Building needs Node.js 22.18 or later, Rust, and the Xcode Command Line Tools. The app needs an Apple silicon Mac with macOS 11 or later, and nothing else: no account, no internet connection.
@@ -47,7 +44,7 @@ The tests are unit tests for the parts where a bug could lose work: the task and
 
 ## Storage
 
-The board is one file: `~/Library/Application Support/com.johnprice.projectzero/board.json`. Development builds use a `development` folder inside it, so they never touch the real board. The browser preview keeps its own board in the browser's storage (no backups).
+The board is one file: `~/Library/Application Support/com.johnprice.projectzero/board.json`. Development builds use a `development` folder inside it, so they never touch the real board.
 
 - **Saving.** Each change shows at once and is saved straight away, in order; changes made during a save are combined into the next one. Rust writes a temporary file, flushes it to disk, and renames it over the board, so a crash leaves the old board or the new one, never a mix. Every board is checked before it is written. If a save fails, the board goes back to its last saved state and says so; an open form keeps your edits so you can try again.
 - **One copy.** The file has a revision number, and a save based on an older one is refused. Only one copy of the installed app can run.
@@ -56,7 +53,7 @@ The board is one file: `~/Library/Application Support/com.johnprice.projectzero/
 - **Unreadable board.** Nothing is overwritten and editing pauses. Restore from a backup or an exported file; the unreadable file is kept as a backup first.
 - **Export and restore.** Export tasks saves a readable JSON copy where you choose. Restore accepts an export or a backup, asks first, and backs up the current board.
 - **Format.** The board has a `schema` number (currently 1), checked by `src/lib/codec.ts`. A board from a newer version of the app is refused rather than misread.
-- Theme, sidebar width and recent commands are kept by the app's web view, not in the board.
+- Theme, sidebar width and recent commands are device preferences kept by the app, not in the board.
 
 Backups can't protect against losing the whole Mac. Keep exports somewhere else, and keep the data folder itself out of iCloud Drive or Dropbox.
 
@@ -68,7 +65,7 @@ Backups can't protect against losing the whole Mac. Keep exports somewhere else,
 
 The names are fixed, so the website's download link and the update address (`releases/latest/download/latest.json`) keep working from one version to the next.
 
-**The signing key** is `~/.config/project-zero/update-key` (made once with `npm run update-key`, never in the repo); its public half is in `src-tauri/tauri.conf.json`. Back it up somewhere safe. Without it, `npm run dist` builds the disk image only. If it's lost or leaked, make a new one, put its public key in `tauri.conf.json`, and release; installed copies then need that version downloaded from the website once.
+**The signing key** is `~/.config/project-zero/update-key` (never in the repo); its public half is in `src-tauri/tauri.conf.json`. Back it up somewhere safe. Without it, `npm run dist` builds the disk image only. If it's lost or leaked, make a new one with `npx tauri signer generate -w ~/.config/project-zero/update-key`, put its public key in `tauri.conf.json`, and release; installed copies then need that version downloaded from the website once.
 
 The app is ad-hoc signed and not notarised, so a downloaded copy shows Gatekeeper's warning the first time (the website explains Open Anyway).
 
@@ -77,11 +74,11 @@ The app is ad-hoc signed and not notarised, so a downloaded copy shows Gatekeepe
 `docs/` is a single static page (no build step) with a download link. To publish it with GitHub Pages: **Settings › Pages › Deploy from a branch › `main` / `docs`**. (On a free GitHub plan, Pages and release downloads need the repository to be public.) It's at https://johnprice99.github.io/project-zero/.
 
 - **Download link:** `releases/latest/download/Project-Zero-mac-arm64.dmg`, so it always gets the newest release.
-- **Screenshots:** `npm run screenshots` retakes the five screenshots in `docs/images/` from the browser preview in WebKit, the engine the app uses, with a made-up board in a throwaway browser profile.
+- **Screenshots** (`docs/images/`) are of the app at 1280 × 800. The page draws the window around them, so if the interface changes, retake them of the window's content only.
 
 ## Icon
 
-`src-tauri/icons/ProjectZero.icon` is an Icon Composer icon, like Typr's: macOS 26 and later show it in light, dark, tinted or clear style to match your Mac. Its layers (the white “P0” and the purple gradient) are made from the artwork beside it (`artwork.png`, `artwork-dark.png`); `icon.json` says how they combine, and can be opened in Icon Composer. `npm run icon` compiles it into `Assets.car` and the `icon.icns` fallback for older macOS (which stops at 256 px, as Typr's does), and exports the pictures used by the About panel (light and dark), the favicon and the website. Everything it makes is committed, so only changing the icon needs Xcode.
+The app icon was made with Icon Composer, like Typr's, and compiled with Xcode's `actool` into `src-tauri/icons/Assets.car`, which macOS 26 and later show in light, dark, tinted or clear style to match your Mac, and `icon.icns`, the fallback for older macOS (it stops at 256 px, as Typr's does). The About panel uses `src/assets/icon-light.png` and `icon-dark.png`, the website `docs/images/icon.png` and `favicon.png`, and the window icon `src-tauri/icons/icon.png` (128 px), all exported from the same icon. To change it, make a new Icon Composer icon and replace those files; the script that built this one is `scripts/icon.mjs` in commit 5e2a959.
 
 ## Keys
 
@@ -102,11 +99,11 @@ Everything is in the command palette (⇧⌘P). Type to filter: the letters must
 
 ## Code layout
 
-- `src/lib/` — the app without its interface: `model` (tasks, ordering, Today, columns), `codec` (the board format), `storage` (the save queue) with `tauri-storage` and `browser-storage`, `commit` (apply a change, save it, roll back on failure), `commands` and `command-registry` (the palette), `native` (menus, quitting, updates, links), `theme`, `preferences`, `sample` (the first-run board).
-- `src/components/` and `src/App.svelte` — the interface. `App.svelte` holds the board and which dialog is open. `src/assets/` — the About panel's icons and the favicon.
+- `src/lib/` — the app without its interface: `model` (tasks, ordering, Today, columns), `codec` (the board format), `storage` (the save queue) with `tauri-storage` (Rust's file), `commit` (apply a change, save it, roll back on failure), `commands` and `command-registry` (the palette), `native` (menus, quitting, updates, links), `theme`, `preferences`, `sample` (the first-run board).
+- `src/components/` and `src/App.svelte` — the interface. `App.svelte` holds the board and which dialog is open. `src/assets/` — the About panel's icons.
 - `src-tauri/src/` — Rust: `storage` (the board file, revisions, backups, restore, export), `main` (menu, commands, saving before quit), `updates`, `dialogs`.
-- `tests/` — unit tests (Node's test runner); the Rust tests are in `storage.rs` and `updates.rs`.
-- `src-tauri/icons/` — the icon's artwork, its Icon Composer source and what's built from it (see [Icon](#icon)).
-- `scripts/` — `release.mjs` (`npm run dist`), `icon.mjs` and `icon-layers.swift` (`npm run icon`), `screenshots.mjs`.
+- `tests/` — unit tests (Node's test runner), with an in-memory stand-in for the Rust storage in `backends.ts`; the Rust tests are in `storage.rs` and `updates.rs`.
+- `src-tauri/icons/` — the app icon (see [Icon](#icon)).
+- `scripts/release.mjs` — builds a release (`npm run dist`).
 - `docs/` — the website.
 - `AGENTS.md` — rules and gotchas for coding agents working on Project Zero.
