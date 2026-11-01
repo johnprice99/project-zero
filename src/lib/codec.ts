@@ -68,12 +68,28 @@ function checkItem(value: unknown, path: string): CheckItem {
 
 function validate(doc: Doc): Board {
   const projects = list(doc.projects, 'projects').map((p, i) => project(p, `projects[${i}]`));
-  unique(projects.map(p => p.id), 'projects', 'id');
-  unique(projects.map(p => p.name.trim().toLowerCase()), 'projects', 'name');
+  unique(
+    projects.map(p => p.id),
+    'projects',
+    'id',
+  );
+  unique(
+    projects.map(p => p.name.trim().toLowerCase()),
+    'projects',
+    'name',
+  );
 
   const columns = list(doc.columns, 'columns').map((c, i) => column(c, `columns[${i}]`));
-  unique(columns.map(c => c.id), 'columns', 'id');
-  unique(columns.map(c => c.name.trim().toLowerCase()), 'columns', 'name');
+  unique(
+    columns.map(c => c.id),
+    'columns',
+    'id',
+  );
+  unique(
+    columns.map(c => c.name.trim().toLowerCase()),
+    'columns',
+    'name',
+  );
   for (const id of coreColumnIds) if (!columns.some(c => c.id === id)) fail('columns', `is missing the core “${id}” column.`);
   const columnIds = new Set(columns.map(c => c.id));
   const projectIds = new Set(projects.map(p => p.id));
@@ -93,7 +109,8 @@ function validate(doc: Doc): Board {
     const t = record(value, path);
     const id = text(t.id, `${path}.id`);
     const title = text(t.title, `${path}.title`, limits.taskTitle);
-    if (typeof t.projectId !== 'string' || !projectIds.has(t.projectId)) fail(`${path}.projectId`, 'must name one of the projects.');
+    if (typeof t.projectId !== 'string' || !projectIds.has(t.projectId))
+      fail(`${path}.projectId`, 'must name one of the projects.');
     if (typeof t.status !== 'string' || !columnIds.has(t.status)) fail(`${path}.status`, 'must name one of the columns.');
     if (typeof t.blocked !== 'boolean') fail(`${path}.blocked`, 'must be true or false.');
     if (t.blocked && t.status === completedColumnId) fail(`${path}.blocked`, 'cannot be set on completed work.');
@@ -115,7 +132,11 @@ function validate(doc: Doc): Board {
       checklist,
     };
   });
-  unique(tasks.map(t => t.id), 'tasks', 'id');
+  unique(
+    tasks.map(t => t.id),
+    'tasks',
+    'id',
+  );
 
   return { completedColumnId, collapsedProjects, columns, projects, tasks };
 }

@@ -8,11 +8,11 @@
   import Settings from './components/Settings.svelte';
   import { bindExitFlush, bindNativeMenus, createAppStore } from './lib/native';
   import NewTaskDialog from './components/NewTaskDialog.svelte';
-  import TextPrompt from './components/TextPrompt.svelte';
-  import { readSidebarWidth, writeSidebarWidth, clampSidebarWidth, sidebarRange } from './lib/preferences';
+  import { readSidebarWidth, writeSidebarWidth, clampSidebarWidth, sidebarRange, readRecentCommands, writeRecentCommands } from './lib/preferences';
+  import { rememberRecent, type PalettePrompt } from './lib/commands';
   import { buildCommands } from './lib/command-registry';
   import TaskPalette from './components/TaskPalette.svelte';
-  import { emptyBoard, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Status, type View } from './lib/model';
+  import { limits, emptyBoard, addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, reorderTask, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Status, type View } from './lib/model';
   import { sampleBoard } from './lib/sample';
   import { readableError } from './lib/codec';
   import { ConflictError, type BackupInfo } from './lib/storage';
@@ -20,8 +20,8 @@
 
   // One dialog at a time; a confirmation can appear above it.
   type Panel =
-    | { kind: 'palette' } | { kind: 'settings' } | { kind: 'new-task' }
-    | { kind: 'task'; id: string } | { kind: 'project'; id: string | null } | { kind: 'column'; id: string | null };
+    | { kind: 'palette'; prompt?: PalettePrompt } | { kind: 'settings' } | { kind: 'new-task' }
+    | { kind: 'task'; id: string } | { kind: 'project'; id: string | null };
   const store = createAppStore();
   let board = $state<Board>(emptyBoard());
   let view = $state<View>('all');
@@ -35,13 +35,14 @@
   let storageBlocked = $state(false);
   let ready = $state(false);
   let backups = $state<BackupInfo[]>([]);
+  let recentCommands = $state(readRecentCommands());
+  let paletteOpenedAt = 0;
   let sidebarWidth = $state(readSidebarWidth());
   let resizingSidebar = $state(false);
   let paletteOpen = $derived(panel?.kind === 'palette');
   let settingsOpen = $derived(panel?.kind === 'settings');
   let taskCreationOpen = $derived(panel?.kind === 'new-task');
   let projectDialog = $derived(panel?.kind === 'project' ? panel : null);
-  let columnPrompt = $derived(panel?.kind === 'column' ? panel : null);
   let selectedId = $derived(panel?.kind === 'task' ? panel.id : null);
   let selected = $derived(board.tasks.find(t => t.id === selectedId));
 
@@ -118,8 +119,14 @@
   function createColumn(name: string) {
     return commit(b => addColumn(b, name));
   }
-  function savePromptColumn(name: string) {
-    return columnPrompt?.id ? saveColumnName(columnPrompt.id, name) : createColumn(name);
+  const columnNameError = `Use a unique column name (up to ${limits.columnName} characters).`;
+  function promptForColumn(id: string | null) {
+    const column = board.columns.find(c => c.id === id);
+    openPrompt({
+      placeholder: column ? `Rename “${column.name}”` : 'New column name',
+      value: column?.name,
+      submit: async name => ((await (column ? saveColumnName(column.id, name) : createColumn(name))) ? null : saveError || columnNameError),
+    });
   }
   function removeBoardColumn(id: string, destination: string) {
     return commit(b => removeColumn(b, id, destination));
@@ -144,15 +151,23 @@
     openPanel(board.projects.length ? { kind: 'new-task' } : { kind: 'project', id: null });
   }
   function openSettings() { if (confirmation) return; openPanel({ kind: 'settings' }); }
+  function openPrompt(prompt: PalettePrompt) { openPanel({ kind: 'palette', prompt }); }
   function openPalette() {
-    if (confirmation || paletteOpen) return;
+    // The menu shortcut and the window key handler can both fire for one key press.
+    if (confirmation || (paletteOpen && Date.now() - paletteOpenedAt < 300)) return;
+    paletteOpenedAt = Date.now();
     void store.listBackups().then(list => backups = list, () => backups = []);
     const open = () => openPanel({ kind: 'palette' });
     if (draftDirty) {
       confirmation = { title: 'Discard unsaved changes?', message: 'Your edits have not been saved. Discard them and open the command palette?', action: 'Discard changes', run: open };
     } else open();
   }
-  async function runCommand(run: () => void) { closePanel('palette'); await tick(); run(); }
+  async function runCommand(run: () => unknown) {
+    closePanel('palette');
+    await tick();
+    try { await run(); } catch (error) { saveError = readableError(error, 'That command could not be completed.'); }
+  }
+  function chooseCommand(id: string) { recentCommands = rememberRecent(recentCommands, id); writeRecentCommands(recentCommands); }
   function requestColumnRemoval(id: string, destination: string) {
     confirmation = { title: 'Remove column?', message: `Move tasks from “${board.columns.find(c => c.id === id)?.name}” to “${board.columns.find(c => c.id === destination)?.name}” and remove the column?`, action: 'Remove column', run: () => void commit(b => removeColumn(b, id, destination)) };
   }
@@ -197,11 +212,11 @@
     toggleBlocked: (id) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? patchTask(b, id, { blocked: !task.blocked }) : b; }),
     deleteTask: (id) => askDelete([id]),
     clearDone, clearToday: askClearToday,
-    addColumn: () => openPanel({ kind: 'column', id: null }), renameColumn: (id) => openPanel({ kind: 'column', id }),
+    addColumn: () => promptForColumn(null), renameColumn: promptForColumn,
     removeColumn: requestColumnRemoval, export: () => void exportTasks(),
     restoreFile: () => void askRestore(() => store.importFile(), 'this file'),
     restoreBackup: (id) => void askRestore(() => store.readBackup(id), 'this backup'),
-  }, backups));
+  }, { theme, backups }));
   let commands = $derived(storageBlocked ? allCommands.filter(command => command.group === 'Navigate' || command.group === 'Preferences' || command.id.startsWith('restore-')) : allCommands);
   function askDeleteProject(id: string) {
     const project = board.projects.find(p => p.id === id);
@@ -275,19 +290,16 @@
       onsave={saveTask} onclose={() => closePanel('task')}/>
   {/key}
 {/if}
-{#if paletteOpen}
-  <TaskPalette {commands} onrun={(run) => { void runCommand(run); }} onclose={() => closePanel('palette')}/>
+{#if panel?.kind === 'palette'}
+  {#key panel}
+    <TaskPalette {commands} prompt={panel.prompt} recent={recentCommands} onchoose={chooseCommand}
+      onrun={(run) => { void runCommand(run); }} onclose={() => closePanel('palette')}/>
+  {/key}
 {/if}
 {#if taskCreationOpen && board.projects.length}
   <NewTaskDialog projects={board.projects} initialProject={projectId ?? board.projects[0].id}
     today={view === 'today'} {saveError} ondirty={(dirty) => draftDirty = dirty} onadd={add}
     onclose={() => closePanel('new-task')}/>
-{/if}
-{#if columnPrompt}
-  <TextPrompt title={columnPrompt.id ? 'Rename column' : 'Add column'}
-    initial={board.columns.find(column => column.id === columnPrompt?.id)?.name ?? ''}
-    {saveError} ondirty={(dirty) => draftDirty = dirty} onsave={savePromptColumn}
-    onclose={() => closePanel('column')}/>
 {/if}
 {#if projectDialog}
   <ProjectDialog project={board.projects.find(project => project.id === projectDialog?.id) ?? null}

@@ -1,0 +1,8 @@
+# Svelte templates are formatted by hand: reflowing markup can change spacing.
+*.svelte
+*.css
+*.html
+*.md
+*.json
+src-tauri/
+dist/

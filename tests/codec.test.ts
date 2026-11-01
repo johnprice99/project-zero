@@ -26,15 +26,61 @@ test('decoding keeps only supported fields', () => {
 test('errors name the record and field that is wrong', () => {
   const stored = () => roundtrip(encodeBoard(sampleBoard()));
   const cases: [(doc: any) => void, RegExp][] = [
-    [doc => { doc.tasks[3].title = '  '; }, /tasks\[3\]\.title must be non-empty text of up to 300 characters/],
-    [doc => { doc.tasks[2].projectId = 'missing'; }, /tasks\[2\]\.projectId must name one of the projects/],
-    [doc => { doc.tasks[1].order = 'first'; }, /tasks\[1\]\.order must be a number/],
-    [doc => { doc.tasks[3].status = 'done'; doc.tasks[3].blocked = true; }, /tasks\[3\]\.blocked cannot be set on completed work/],
-    [doc => { doc.tasks.push({ ...doc.tasks[0] }); }, /tasks contains a duplicate id: “sample-0”/],
-    [doc => { doc.projects[1].name = ' project ZERO '; }, /projects contains a duplicate name/],
-    [doc => { doc.projects[0].color = 'red; background: url(x)'; }, /projects\[0\]\.color/],
-    [doc => { doc.columns = doc.columns.filter((c: { id: string }) => c.id !== 'doing'); }, /columns is missing the core “doing” column/],
-    [doc => { doc.collapsedProjects = ['missing']; }, /collapsedProjects\[0\] must name one of the projects/],
+    [
+      doc => {
+        doc.tasks[3].title = '  ';
+      },
+      /tasks\[3\]\.title must be non-empty text of up to 300 characters/,
+    ],
+    [
+      doc => {
+        doc.tasks[2].projectId = 'missing';
+      },
+      /tasks\[2\]\.projectId must name one of the projects/,
+    ],
+    [
+      doc => {
+        doc.tasks[1].order = 'first';
+      },
+      /tasks\[1\]\.order must be a number/,
+    ],
+    [
+      doc => {
+        doc.tasks[3].status = 'done';
+        doc.tasks[3].blocked = true;
+      },
+      /tasks\[3\]\.blocked cannot be set on completed work/,
+    ],
+    [
+      doc => {
+        doc.tasks.push({ ...doc.tasks[0] });
+      },
+      /tasks contains a duplicate id: “sample-0”/,
+    ],
+    [
+      doc => {
+        doc.projects[1].name = ' project ZERO ';
+      },
+      /projects contains a duplicate name/,
+    ],
+    [
+      doc => {
+        doc.projects[0].color = 'red; background: url(x)';
+      },
+      /projects\[0\]\.color/,
+    ],
+    [
+      doc => {
+        doc.columns = doc.columns.filter((c: { id: string }) => c.id !== 'doing');
+      },
+      /columns is missing the core “doing” column/,
+    ],
+    [
+      doc => {
+        doc.collapsedProjects = ['missing'];
+      },
+      /collapsedProjects\[0\] must name one of the projects/,
+    ],
   ];
   for (const [damage, message] of cases) {
     const doc = stored();

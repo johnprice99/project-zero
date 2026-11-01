@@ -10,10 +10,27 @@ export function sampleBoard(): Board {
     ['web', 'Get the final images', 'doing', true, 'Waiting for the new photography.'],
     ['docs', 'Outline the next app idea', 'todo', true, ''],
     ['docs', 'Tidy up project notes', 'todo', false, ''],
-    ['docs', 'Review the launch checklist', 'done', false, '']
+    ['docs', 'Review the launch checklist', 'done', false, ''],
   ];
-  return { ...emptyBoard(), projects: [
-    { id: 'zero', name: 'Project Zero', color: 'iris' }, { id: 'web', name: 'Website', color: 'sage' },
-    { id: 'docs', name: 'Documents & planning', color: 'sand' }, { id: 'general', name: 'General', color: 'slate' }
-  ], tasks: rows.map(([projectId, title, status, today, notes], i) => ({ id: `sample-${i}`, title, projectId, status, today, notes, order: i, todayOrder: i, blocked: i === 6, checklist: [] })) };
+  return {
+    ...emptyBoard(),
+    projects: [
+      { id: 'zero', name: 'Project Zero', color: 'iris' },
+      { id: 'web', name: 'Website', color: 'sage' },
+      { id: 'docs', name: 'Documents & planning', color: 'sand' },
+      { id: 'general', name: 'General', color: 'slate' },
+    ],
+    tasks: rows.map(([projectId, title, status, today, notes], i) => ({
+      id: `sample-${i}`,
+      title,
+      projectId,
+      status,
+      today,
+      notes,
+      order: i,
+      todayOrder: i,
+      blocked: i === 6,
+      checklist: [],
+    })),
+  };
 }

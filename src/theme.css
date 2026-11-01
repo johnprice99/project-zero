@@ -25,6 +25,7 @@
   --rose: #d62976; --coral: #e05b12; --sky: #1665d8; --teal: #008ca8;
   --blocked-bg: #f8f2e7; --blocked-ink: #8a6b33;
   --error-bg: #fff0ed; --error-text: #923d30; --backdrop: rgb(30 28 38 / 25%);
+  --palette-shadow: 0 12px 40px rgb(0 0 0 / 16%), 0 0 0 1px rgb(0 0 0 / 6%);
 }
 :root[data-appearance='dark'] {
   color-scheme: dark;
@@ -37,6 +38,7 @@
   --rose: #f45b9c; --coral: #ff893e; --sky: #5c9aff; --teal: #20c4d9;
   --blocked-bg: #373023; --blocked-ink: #dbba80;
   --error-bg: #422b29; --error-text: #ffb6a7; --backdrop: rgb(0 0 0 / 50%);
+  --palette-shadow: 0 12px 40px rgb(0 0 0 / 50%), 0 0 0 1px rgb(255 255 255 / 8%);
   --card-shadow: 0 1px 2px rgb(0 0 0 / 10%);
 }
 :root { --warning-surface: #fff3ef; --warning-border: #e9b6aa; --warning-strong: #bb5543; --warning-ink: #793b31; --on-warning: #fff; }

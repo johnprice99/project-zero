@@ -1,6 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteProject, projectColors, addTask, reorderTask, clearToday, saveProject, protectedColumn, deleteTasks, setCollapsed, removeColumn, addColumn, renameColumn, lane, moveTask, toggleToday, patchTask } from '../src/lib/model.ts';
+import {
+  deleteProject,
+  projectColors,
+  addTask,
+  reorderTask,
+  clearToday,
+  saveProject,
+  protectedColumn,
+  deleteTasks,
+  setCollapsed,
+  removeColumn,
+  addColumn,
+  renameColumn,
+  lane,
+  moveTask,
+  toggleToday,
+  patchTask,
+} from '../src/lib/model.ts';
 import { decodeBoard, encodeBoard } from '../src/lib/codec.ts';
 import { sampleBoard } from '../src/lib/sample.ts';
 
@@ -10,8 +27,14 @@ test('Today ordering is independent of project ordering', () => {
   const last = lane(original, 'today', 'todo').at(-1)!;
   const next = moveTask(original, last.id, 'todo', 'today', undefined, first.id);
   assert.equal(lane(next, 'today', 'todo')[0].id, last.id);
-  assert.deepEqual(next.tasks.map(t => t.order), original.tasks.map(t => t.order));
-  assert.deepEqual(next.tasks.map(t => t.projectId), original.tasks.map(t => t.projectId));
+  assert.deepEqual(
+    next.tasks.map(t => t.order),
+    original.tasks.map(t => t.order),
+  );
+  assert.deepEqual(
+    next.tasks.map(t => t.projectId),
+    original.tasks.map(t => t.projectId),
+  );
 });
 test('moving a task changes the shared status without duplicating it', () => {
   const original = sampleBoard();
@@ -33,13 +56,18 @@ test('removing from Today leaves the task and project order intact', () => {
   const next = toggleToday(original, 'sample-1');
   assert.equal(next.tasks.find(t => t.id === 'sample-1')!.today, false);
   assert.equal(next.tasks.length, original.tasks.length);
-  assert.deepEqual(next.tasks.map(t => t.order), original.tasks.map(t => t.order));
+  assert.deepEqual(
+    next.tasks.map(t => t.order),
+    original.tasks.map(t => t.order),
+  );
 });
 test('quick capture creates one trimmed task in the requested lane and view', () => {
   const next = addTask(sampleBoard(), '  Test the board  ', 'web', 'today', 'doing');
   const task = next.tasks.at(-1)!;
-  assert.equal(task.title, 'Test the board'); assert.equal(task.projectId, 'web');
-  assert.equal(task.status, 'doing'); assert.equal(task.today, true);
+  assert.equal(task.title, 'Test the board');
+  assert.equal(task.projectId, 'web');
+  assert.equal(task.status, 'doing');
+  assert.equal(task.today, true);
   assert.equal(addTask(next, '  ', 'web', 'all'), next);
 });
 test('editing a task updates the same object represented in both views', () => {
@@ -54,13 +82,14 @@ test('dropping a card on itself has no effect', () => {
   assert.equal(moveTask(board, 'sample-1', 'todo', 'all', 'zero', 'sample-1'), board);
 });
 
-
 test('blocking is independent of status, Today membership, and priority', () => {
   const original = sampleBoard();
   const next = patchTask(original, 'sample-0', { blocked: true });
   const task = next.tasks.find(t => t.id === 'sample-0')!;
-  assert.equal(task.status, 'doing'); assert.equal(task.blocked, true);
-  assert.equal(task.today, true); assert.equal(task.order, original.tasks[0].order);
+  assert.equal(task.status, 'doing');
+  assert.equal(task.blocked, true);
+  assert.equal(task.today, true);
+  assert.equal(task.order, original.tasks[0].order);
   assert.equal(task.todayOrder, original.tasks[0].todayOrder);
   assert.equal(task.notes, original.tasks[0].notes);
 });
@@ -71,7 +100,6 @@ test('completing a blocked task clears its blocker without changing its notes', 
   assert.equal(task.blocked, false);
   assert.equal(task.notes, board.tasks[6].notes);
 });
-
 
 test('renaming a column preserves its tasks and completion behaviour', () => {
   const board = sampleBoard();
@@ -84,19 +112,22 @@ test('renaming a column preserves its tasks and completion behaviour', () => {
 test('new columns accept tasks and appear before completed work', () => {
   const board = addColumn(sampleBoard(), 'Review');
   const column = board.columns[2];
-  assert.equal(column.name, 'Review'); assert.equal(board.columns[3].id, 'done');
+  assert.equal(column.name, 'Review');
+  assert.equal(board.columns[3].id, 'done');
   const next = moveTask(board, 'sample-0', column.id, 'today');
   assert.equal(lane(next, 'today', column.id)[0].id, 'sample-0');
   assert.equal(addColumn(board, 'review'), board);
   assert.equal(renameColumn(board, column.id, '  '), board);
 });
 
-
 test('deleting tasks removes only the selected cards without retaining a recovery list', () => {
   const original = sampleBoard();
   const ids = original.tasks.filter(t => t.status === original.completedColumnId).map(t => t.id);
   const next = deleteTasks(original, ids);
-  assert.deepEqual(next.tasks, original.tasks.filter(t => !ids.includes(t.id)));
+  assert.deepEqual(
+    next.tasks,
+    original.tasks.filter(t => !ids.includes(t.id)),
+  );
   assert.equal('deletedTasks' in next, false);
   assert.equal(original.tasks.length, 10);
 });
@@ -107,7 +138,10 @@ test('removing an occupied custom column moves its tasks without loss', () => {
   const next = removeColumn(original, reviewId, 'todo');
   assert.equal(next.columns.length, 3);
   assert.equal(next.tasks.length, original.tasks.length);
-  assert.equal(next.tasks.some(t => t.status === reviewId), false);
+  assert.equal(
+    next.tasks.some(t => t.status === reviewId),
+    false,
+  );
   assert.equal(next.tasks.find(t => t.id === 'sample-6')!.blocked, true);
   assert.equal(new Set(lane(next, 'all', 'todo', 'zero').map(t => t.order)).size, lane(next, 'all', 'todo', 'zero').length);
 });
@@ -121,9 +155,15 @@ test('all three core columns are protected even after renaming', () => {
 test('clearing Today changes only membership, including tasks across projects', () => {
   const board = sampleBoard();
   const next = clearToday(board);
-  assert.equal(next.tasks.some(t => t.today), false);
+  assert.equal(
+    next.tasks.some(t => t.today),
+    false,
+  );
   assert.equal(next.tasks.length, board.tasks.length);
-  assert.deepEqual(next.tasks.map(({ today, ...rest }) => rest), board.tasks.map(({ today, ...rest }) => rest));
+  assert.deepEqual(
+    next.tasks.map(({ today, ...rest }) => rest),
+    board.tasks.map(({ today, ...rest }) => rest),
+  );
 });
 test('project edits preserve task references and custom colours', () => {
   const board = sampleBoard();
@@ -143,19 +183,30 @@ test('keyboard priority changes in Today preserve project-board order', () => {
   const original = sampleBoard();
   const next = reorderTask(original, 'sample-7', 'top', 'today');
   assert.equal(lane(next, 'today', 'todo')[0].id, 'sample-7');
-  assert.deepEqual(next.tasks.map(t => t.order), original.tasks.map(t => t.order));
+  assert.deepEqual(
+    next.tasks.map(t => t.order),
+    original.tasks.map(t => t.order),
+  );
   const down = reorderTask(next, 'sample-7', 'down', 'today');
   assert.equal(lane(down, 'today', 'todo').at(-1)!.id, 'sample-7');
 });
 
-
 test('deleting a project removes all its tasks while preserving other projects', () => {
   const original = setCollapsed(sampleBoard(), ['zero', 'web']);
   const next = deleteProject(original, 'zero');
-  assert.equal(next.projects.some(p => p.id === 'zero'), false);
-  assert.equal(next.tasks.some(t => t.projectId === 'zero'), false);
+  assert.equal(
+    next.projects.some(p => p.id === 'zero'),
+    false,
+  );
+  assert.equal(
+    next.tasks.some(t => t.projectId === 'zero'),
+    false,
+  );
   assert.deepEqual(next.collapsedProjects, ['web']);
-  assert.deepEqual(next.tasks, original.tasks.filter(t => t.projectId !== 'zero'));
+  assert.deepEqual(
+    next.tasks,
+    original.tasks.filter(t => t.projectId !== 'zero'),
+  );
   assert.equal(deleteProject(original, 'missing'), original);
   assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(encodeBoard(next)))), next);
 });
@@ -173,7 +224,10 @@ test('deleting the last project leaves a valid empty board that can create proje
 test('every preset project colour survives saving and loading', () => {
   for (const preset of projectColors) {
     const board = saveProject(sampleBoard(), 'web', 'Website', preset.id);
-    assert.equal(decodeBoard(JSON.parse(JSON.stringify(encodeBoard(board)))).projects.find(p => p.id === 'web')!.color, preset.id);
+    assert.equal(
+      decodeBoard(JSON.parse(JSON.stringify(encodeBoard(board)))).projects.find(p => p.id === 'web')!.color,
+      preset.id,
+    );
   }
 });
 
@@ -195,7 +249,7 @@ test('mixed drag and keyboard operations preserve task data and unique priority 
   let board = addColumn(sampleBoard(), 'Review');
   const original = new Map(board.tasks.map(task => [task.id, { title: task.title, notes: task.notes }]));
   let seed = 42;
-  const choose = <T,>(items: readonly T[]): T => {
+  const choose = <T>(items: readonly T[]): T => {
     assert(items.length);
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return items[seed % items.length];

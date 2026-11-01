@@ -43,7 +43,10 @@ test('first launch and later saves persist across restarts', async () => {
   assert.deepEqual(await first.load(), { board: null, source: 'empty' });
   await first.save(sampleBoard());
   await first.save(titled('Second save'));
-  assert.deepEqual(await createBoardStore(createBrowserBackend(storage)).load(), { board: titled('Second save'), source: 'saved' });
+  assert.deepEqual(await createBoardStore(createBrowserBackend(storage)).load(), {
+    board: titled('Second save'),
+    source: 'saved',
+  });
 });
 
 test('an unreadable saved board is never overwritten by normal saves', async () => {

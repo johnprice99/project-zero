@@ -1,42 +1,81 @@
 <script lang="ts">
-  import { tick } from 'svelte';
-  import { findCommands, type Command } from '../lib/commands';
-  import Icon from './Icon.svelte';
-  let { commands, onclose, onrun }: { commands: Command[]; onclose: () => void; onrun: (run: () => void) => void } = $props();
+  import { tick, untrack } from 'svelte';
+  import { filterCommands, orderByRecent, type Command, type PalettePrompt } from '../lib/commands';
+  let { commands, prompt = null, recent = [], onrun, onchoose, onclose }: {
+    commands: Command[]; prompt?: PalettePrompt | null; recent?: string[];
+    onrun: (run: () => unknown) => void; onchoose: (id: string) => void; onclose: () => void;
+  } = $props();
   let dialog: HTMLDialogElement;
   let input: HTMLInputElement;
-  let list: HTMLDivElement;
-  let query = $state('');
+  let list = $state<HTMLDivElement>();
+  let query = $state(untrack(() => prompt?.value ?? ''));
   let cursor = $state(0);
-  let path = $state<{ label: string; commands: Command[] }[]>([]);
-  let matches = $derived(findCommands(path.at(-1)?.commands ?? commands, query));
-  let active = $derived(Math.min(cursor, Math.max(0, matches.length - 1)));
-  $effect(() => { if (dialog && !dialog.open) { dialog.showModal(); input.focus(); } });
-  $effect(() => { const selected = active; const count = matches.length; void tick().then(() => { if (count) list?.querySelector(`[data-index="${selected}"]`)?.scrollIntoView({ block: 'nearest' }); }); });
-  function back() { path = path.slice(0, -1); query = ''; cursor = 0; input.focus(); }
-  function choose(command: Command) {
-    if (command.children?.length) { path = [...path, { label: command.label.replace(/…$/, ''), commands: command.children }]; query = ''; cursor = 0; input.focus(); }
-    else if (command.run) onrun(command.run);
+  let nested = $state<{ placeholder: string; items: Command[] } | null>(null);
+  let error = $state('');
+  let submitting = false;
+  let items = $derived(nested ? nested.items : orderByRecent(commands, recent));
+  let shown = $derived(prompt ? [] : filterCommands(items, query));
+  let active = $derived(Math.min(cursor, Math.max(0, shown.length - 1)));
+  $effect(() => { if (dialog && !dialog.open) { dialog.showModal(); input.focus(); if (prompt) input.select(); } });
+  $effect(() => { const selected = active; void shown.length; void tick().then(() => list?.children[selected]?.scrollIntoView({ block: 'nearest' })); });
+
+  function choose(index: number) {
+    const command = shown[index];
+    if (!command) return;
+    if (!nested) onchoose(command.id);
+    if (command.children?.length) {
+      nested = { placeholder: command.placeholder ?? command.label, items: command.children };
+      query = '';
+      cursor = 0;
+    } else if (command.run) onrun(command.run);
+  }
+  async function submit() {
+    const value = query.trim();
+    if (!value) { dialog.close(); return; }
+    if (submitting || !prompt) return;
+    submitting = true;
+    try {
+      const problem = await prompt.submit(value);
+      if (problem) error = problem;
+      else dialog.close();
+    } finally { submitting = false; }
   }
   function key(e: KeyboardEvent) {
     if (e.isComposing) return;
-    if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) e.preventDefault();
-    if (e.key === 'ArrowDown' && matches.length) cursor = (active + 1) % matches.length;
-    if (e.key === 'ArrowUp' && matches.length) cursor = (active - 1 + matches.length) % matches.length;
-    if (e.key === 'Enter' && matches[active]) choose(matches[active].command);
-    if (e.key === 'Escape') { e.stopPropagation(); if (path.length) back(); else dialog.close(); }
-    if (e.key === 'Backspace' && !query && path.length) { e.preventDefault(); back(); }
+    const down = e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n');
+    const up = e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p');
+    if (!prompt && (down || up)) {
+      e.preventDefault();
+      if (shown.length) cursor = (active + (down ? 1 : -1) + shown.length) % shown.length;
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (prompt) void submit(); else choose(active);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      dialog.close();
+    }
   }
+  // Like Typr, the palette closes when it loses focus or you click outside it.
+  // The check for isConnected stops a palette that has already been replaced from closing its successor.
+  function blur() { setTimeout(() => { if (dialog?.isConnected && dialog.open && document.activeElement !== input) dialog.close(); }); }
 </script>
-<dialog bind:this={dialog} class="command-dialog" aria-label="Command palette" onclose={onclose}>
-  <div class="command-search">{#if path.length}<button class="icon-button" aria-label="Back to commands" onclick={back}>←</button>{:else}<Icon name="search" size={18}/>{/if}<input bind:this={input} role="combobox" aria-label="Search commands" aria-expanded="true" aria-autocomplete="list" aria-controls="command-results" aria-activedescendant={matches.length ? `command-result-${active}` : undefined} placeholder={path.at(-1)?.label ?? 'What would you like to do?'} bind:value={query} oninput={() => cursor = 0} onkeydown={key}/><button class="icon-button" aria-label="Close command palette" onclick={() => dialog.close()}><Icon name="close" size={16}/></button></div>
-  {#if path.length}<div class="command-breadcrumb">{path.map(p => p.label).join(' / ')}</div>{/if}
-  <div class="command-results" id="command-results" role="listbox" aria-label="Commands" bind:this={list}>
-    {#each matches as result, index (result.command.id)}
-      {#if index === 0 || result.command.group !== matches[index - 1].command.group}<div class="command-group" role="presentation">{result.command.group ?? (path.at(-1)?.label || 'Actions')}</div>{/if}
-      <button class="command-option" role="option" id={`command-result-${index}`} data-index={index} aria-selected={index === active} tabindex="-1" onmousedown={(e) => e.preventDefault()} onclick={() => choose(result.command)}><span class="command-option-text"><span>{result.command.label}</span>{#if result.path || result.command.detail}<small>{[result.path, result.command.detail].filter(Boolean).join(' · ')}</small>{/if}</span>{#if result.command.children?.length}<Icon name="chevron" size={14}/>{:else}<span class="command-enter">↵</span>{/if}</button>
-    {/each}
-    {#if !matches.length}<p class="command-empty">No matching commands.</p>{/if}
-  </div>
-  <div class="command-help"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> select</span><span><kbd>Esc</kbd> {path.length ? 'back' : 'close'}</span></div>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
+<dialog bind:this={dialog} class="command-dialog" aria-label="Command palette" onclose={onclose} onmousedown={(e) => { if (e.target === dialog) dialog.close(); }}>
+  <input bind:this={input} role="combobox" aria-label={prompt ? prompt.placeholder : 'Search commands'} aria-expanded={!prompt} aria-autocomplete="list" aria-controls="command-results" aria-activedescendant={shown.length ? `command-result-${active}` : undefined}
+    placeholder={prompt?.placeholder ?? nested?.placeholder ?? 'Type a command…'} spellcheck="false" autocomplete="off" bind:value={query} oninput={() => { cursor = 0; error = ''; }} onkeydown={key} onblur={blur}/>
+  {#if prompt}
+    {#if error}<p class="command-message" role="alert">{error}</p>{/if}
+  {:else}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="command-results" id="command-results" role="listbox" tabindex="-1" aria-label="Commands" bind:this={list} onmousedown={(e) => e.preventDefault()}>
+      {#each shown as command, index (command.id)}
+        <div class="command-option" class:selected={index === active} role="option" tabindex="-1" id={`command-result-${index}`} aria-selected={index === active} onmousedown={(e) => { e.preventDefault(); choose(index); }}>
+          <span class="command-label">{command.label}</span>
+          {#if command.detail}<span class="command-detail">{command.detail}</span>{/if}
+          {#if command.hint}<span class="command-hint">{command.hint}</span>{/if}
+        </div>
+      {/each}
+    </div>
+  {/if}
 </dialog>
