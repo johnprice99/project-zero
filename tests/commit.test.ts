@@ -22,7 +22,6 @@ async function session() {
     readBackup: async () => '',
     exportFile: async () => true,
     importFile: async () => null,
-    prototypeBoard: () => null,
   };
   const store = createBoardStore(backend);
   await store.load();

@@ -14,7 +14,8 @@
     "format:check": "prettier --check .",
     "dist": "node scripts/release.mjs",
     "update-key": "tauri signer generate -w ~/.config/project-zero/update-key",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "icon": "node scripts/icon.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

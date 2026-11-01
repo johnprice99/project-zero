@@ -14,8 +14,6 @@ export interface StorageBackend {
   // Resolves false when the user cancels.
   exportFile(fileName: string, contents: string): Promise<boolean>;
   importFile(): Promise<string | null>;
-  // A board left by the browser prototype, for one-off import.
-  prototypeBoard(): string | null;
 }
 export interface BackupInfo {
   id: string;
@@ -23,7 +21,7 @@ export interface BackupInfo {
   reason: string;
 }
 export class ConflictError extends Error {}
-export type LoadSource = 'saved' | 'upgraded' | 'imported' | 'empty';
+export type LoadSource = 'saved' | 'upgraded' | 'empty';
 
 interface Waiter {
   resolve: () => void;
@@ -105,10 +103,8 @@ export function createBoardStore(backend: StorageBackend) {
           [revision, saved] = [file.revision, board];
           return { board, source: upgraded ? 'upgraded' : 'saved' };
         }
-        const prototype = backend.prototypeBoard();
-        const board = prototype === null ? null : decodeAnyBoard(JSON.parse(prototype)).board;
         revision = 0;
-        return { board, source: board ? 'imported' : 'empty' };
+        return { board: null, source: 'empty' };
       } finally {
         loading = false;
       }

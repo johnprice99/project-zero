@@ -32,7 +32,6 @@ function controlledBackend() {
     readBackup: async () => '',
     exportFile: async () => true,
     importFile: async () => null,
-    prototypeBoard: () => null,
   };
   return { backend, saves };
 }
@@ -128,19 +127,6 @@ test('a stale window cannot silently overwrite a newer save', async () => {
   await first.save(titled('From the first window'));
   await assert.rejects(second.save(titled('From the stale window')), ConflictError);
   assert.equal((await second.load()).board?.tasks[0].title, 'From the first window');
-});
-
-test('a browser prototype board is imported once and left in place', async () => {
-  const storage = memoryStorage();
-  const prototype = JSON.stringify({ ...sampleBoard(), version: 5, deletedTasks: [] });
-  storage.values.set('project-zero.prototype.board.v5', prototype);
-  const store = createBoardStore(createBrowserBackend(storage));
-  const loaded = await store.load();
-  assert.deepEqual(loaded, { board: sampleBoard(), source: 'imported' });
-  await store.save(loaded.board!);
-  assert.equal(storage.values.get('project-zero.prototype.board.v5'), prototype);
-  assert.equal(JSON.parse(storage.values.get(key)!).board.schema, 1);
-  assert.equal((await store.load()).source, 'saved');
 });
 
 test('a board that would not load again is never written', async () => {

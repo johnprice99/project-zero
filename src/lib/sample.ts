@@ -4,7 +4,7 @@ export function sampleBoard(): Board {
     ['zero', 'Make adding a task feel effortless', 'doing', true, 'One line, Enter, and on to the next thought.'],
     ['zero', 'Sketch the Today view', 'todo', true, 'A little space for the things that matter today.'],
     ['zero', 'Try a few colours for the app', 'todo', false, ''],
-    ['zero', 'Choose the app foundation', 'done', false, 'Tauri, Svelte, TypeScript, and SQLite.'],
+    ['zero', 'Choose the app foundation', 'done', false, 'Tauri, Svelte and TypeScript.'],
     ['web', 'Build the homepage layout', 'doing', true, ''],
     ['web', 'Write the about page', 'todo', false, ''],
     ['web', 'Get the final images', 'doing', true, 'Waiting for the new photography.'],
@@ -30,7 +30,6 @@ export function sampleBoard(): Board {
       order: i,
       todayOrder: i,
       blocked: i === 6,
-      checklist: [],
     })),
   };
 }

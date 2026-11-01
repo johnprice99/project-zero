@@ -1,5 +1,5 @@
-// Builds a release into release/: the disk image the website links to, and the signed
-// update that installed copies download. Attach every file in release/ to a GitHub
+// Builds a release into dist/: the disk image the website links to, and the signed
+// update that installed copies download. Attach every file in dist/ to a GitHub
 // release tagged with the version (e.g. 1.0.0, no “v”). Run with `npm run dist`.
 //
 // The update is signed with ~/.config/project-zero/update-key (never in the repo).
@@ -17,7 +17,7 @@ const REPO = 'johnprice99/project-zero';
 // Fixed names, so the website's link (the newest release's disk image) keeps working.
 const NAME = 'Project-Zero-mac-arm64';
 const KEY = process.env.PROJECT_ZERO_UPDATE_KEY || join(homedir(), '.config', 'project-zero', 'update-key');
-const OUT = join(ROOT, 'release');
+const OUT = join(ROOT, 'dist');
 const BUNDLE = join(ROOT, 'src-tauri', 'target', 'release', 'bundle');
 
 const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
@@ -73,6 +73,6 @@ if (signing) {
 }
 
 const mb = path => `${(statSync(path).size / 1048576).toFixed(1)} MB`;
-console.log(`\nProject Zero ${version} is ready in release/:`);
+console.log(`\nProject Zero ${version} is ready in dist/:`);
 for (const name of readdirSync(OUT)) console.log(`  ${name.padEnd(36)} ${mb(join(OUT, name))}`);
 console.log(`\nNext: a GitHub release tagged ${version}, attaching every file above, marked as the latest release.\n`);

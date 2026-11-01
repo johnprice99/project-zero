@@ -1,11 +1,10 @@
 // Takes the website's screenshots (docs/images) from the browser preview, using a made-up
 // board in a throwaway browser profile, so it never touches your own board or settings.
 // Run with `npm run screenshots`. WebKit is the engine the desktop app uses.
-// Also copies the app icon to the website, so a new icon only needs replacing in the app.
 
 import { webkit } from 'playwright';
 import { build, preview } from 'vite';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,7 +41,7 @@ const order = {};
 const tasks = rows.map(([projectId, status, title, notes, today, blocked], i) => {
   const lane = `${projectId}-${status}`;
   order[lane] = (order[lane] ?? -1) + 1;
-  return { id: `shot-${i}`, title, projectId, status, blocked, today, order: order[lane], todayOrder: i, notes, checklist: [] };
+  return { id: `shot-${i}`, title, projectId, status, blocked, today, order: order[lane], todayOrder: i, notes };
 });
 const board = {
   schema: 1,
@@ -110,8 +109,6 @@ try {
       await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
     },
   });
-  copyFileSync(join(ROOT, 'src', 'assets', 'icon-light.png'), join(OUT, 'icon.png'));
-  copyFileSync(join(ROOT, 'src-tauri', 'icons', '64x64.png'), join(OUT, 'favicon.png'));
 } finally {
   await browser.close();
   await new Promise(resolve => server.httpServer.close(resolve));

@@ -30,11 +30,6 @@ export interface Project {
   name: string;
   color: string;
 }
-export interface CheckItem {
-  id: string;
-  title: string;
-  done: boolean;
-}
 export interface Task {
   id: string;
   title: string;
@@ -45,7 +40,6 @@ export interface Task {
   order: number;
   todayOrder: number;
   notes: string;
-  checklist: CheckItem[];
 }
 export type TaskPatch = Partial<Pick<Task, 'title' | 'notes' | 'blocked'>>;
 export interface Board {
@@ -93,7 +87,6 @@ export function addTask(
     todayOrder: Math.max(-1, ...lane(board, 'today', status).map(t => t.todayOrder)) + 1,
     blocked: false,
     notes: '',
-    checklist: [],
   };
   return { ...board, tasks: [...board.tasks, task] };
 }

@@ -18,7 +18,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   }
 }
 
-export function createTauriBackend(prototypeBoard: () => string | null): StorageBackend {
+export function createTauriBackend(): StorageBackend {
   return {
     load: () => call('load_board'),
     save: (expectedRevision, contents) => call('save_board', { expectedRevision, contents }),
@@ -27,6 +27,5 @@ export function createTauriBackend(prototypeBoard: () => string | null): Storage
     readBackup: id => call('read_backup', { id }),
     exportFile: (fileName, contents) => call('export_board', { fileName, contents }),
     importFile: () => call('import_board'),
-    prototypeBoard,
   };
 }

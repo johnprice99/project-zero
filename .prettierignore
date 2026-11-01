@@ -1,4 +1,5 @@
-# Svelte templates are formatted by hand: reflowing markup can change spacing.
+# Svelte templates are formatted by hand (reflowing markup can change spacing); the rest
+# is left as written. Rust uses cargo fmt.
 *.svelte
 *.css
 *.html
@@ -6,4 +7,3 @@
 *.json
 src-tauri/
 dist/
-release/

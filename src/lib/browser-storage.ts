@@ -3,7 +3,6 @@ import { ConflictError, type StorageBackend } from './storage.ts';
 // Browser preview storage. Not durable: clearing site data removes it.
 const KEY = 'project-zero.board';
 const BEFORE_RESTORE_KEY = 'project-zero.board.before-restore';
-const PROTOTYPE_KEYS = [6, 5, 4, 3, 2, 1].map(version => `project-zero.prototype.board.v${version}`);
 type StorageAccess = Pick<Storage, 'getItem' | 'setItem'>;
 
 function envelope(revision: number, contents: string): string {
@@ -74,13 +73,6 @@ export function createBrowserBackend(storage: StorageAccess): StorageBackend {
         });
         input.click();
       });
-    },
-    prototypeBoard() {
-      for (const key of PROTOTYPE_KEYS) {
-        const value = storage.getItem(key);
-        if (value !== null) return value;
-      }
-      return null;
     },
   };
 }

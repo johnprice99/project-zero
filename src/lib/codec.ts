@@ -1,14 +1,4 @@
-import {
-  coreColumnIds,
-  isProjectColor,
-  limits,
-  type Board,
-  type CheckItem,
-  type Column,
-  type Project,
-  type Task,
-} from './model.ts';
-import { importPrototypeBoard, isPrototypeBoard } from './prototype.ts';
+import { coreColumnIds, isProjectColor, limits, type Board, type Column, type Project, type Task } from './model.ts';
 
 // The saved board document. Bump SCHEMA and add a migration step when the format changes.
 export const SCHEMA = 1;
@@ -59,13 +49,6 @@ function column(value: unknown, path: string): Column {
   const c = record(value, path);
   return { id: text(c.id, `${path}.id`), name: text(c.name, `${path}.name`, limits.columnName) };
 }
-function checkItem(value: unknown, path: string): CheckItem {
-  const c = record(value, path);
-  if (typeof c.title !== 'string') fail(`${path}.title`, 'must be text.');
-  if (typeof c.done !== 'boolean') fail(`${path}.done`, 'must be true or false.');
-  return { id: text(c.id, `${path}.id`), title: c.title, done: c.done };
-}
-
 function validate(doc: Doc): Board {
   const projects = list(doc.projects, 'projects').map((p, i) => project(p, `projects[${i}]`));
   unique(
@@ -118,7 +101,6 @@ function validate(doc: Doc): Board {
     if (typeof t.order !== 'number' || !Number.isFinite(t.order)) fail(`${path}.order`, 'must be a number.');
     if (typeof t.todayOrder !== 'number' || !Number.isFinite(t.todayOrder)) fail(`${path}.todayOrder`, 'must be a number.');
     if (typeof t.notes !== 'string') fail(`${path}.notes`, 'must be text.');
-    const checklist = list(t.checklist, `${path}.checklist`).map((c, j) => checkItem(c, `${path}.checklist[${j}]`));
     return {
       id,
       title,
@@ -129,7 +111,6 @@ function validate(doc: Doc): Board {
       order: t.order,
       todayOrder: t.todayOrder,
       notes: t.notes,
-      checklist,
     };
   });
   unique(
@@ -156,11 +137,9 @@ export function decodeBoard(value: unknown): Board {
 }
 
 // Accept anything the app can restore from: a saved document, a backup file
-// (which wraps the document with a revision), or a prototype export.
+// (which wraps the document with a revision).
 export function decodeAnyBoard(value: unknown): { board: Board; upgraded: boolean } {
   const doc = isRecord(value) && isRecord(value.board) && 'revision' in value ? value.board : value;
-  // Prototype imports are checked against the current format too.
-  if (isPrototypeBoard(doc)) return { board: validate({ ...encodeBoard(importPrototypeBoard(doc)) }), upgraded: true };
   const schema = isRecord(doc) ? doc.schema : undefined;
   return { board: decodeBoard(doc), upgraded: schema !== SCHEMA };
 }

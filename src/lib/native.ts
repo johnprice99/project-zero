@@ -10,15 +10,14 @@ import { createTauriBackend } from './tauri-storage.ts';
 export const isDesktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 export function createAppStore(): BoardStore {
-  const browser = createBrowserBackend(localStorage);
-  return createBoardStore(isDesktop ? createTauriBackend(() => browser.prototypeBoard()) : browser);
+  return createBoardStore(isDesktop ? createTauriBackend() : createBrowserBackend(localStorage));
 }
 
 export interface Startup {
   board: Board;
   error: unknown;
 }
-// New, imported, and upgraded boards are saved straight away. The desktop app backs up
+// New and upgraded boards are saved straight away. The desktop app backs up
 // the previous file before the first save of each session.
 export async function openBoard(store: BoardStore): Promise<Startup> {
   try {

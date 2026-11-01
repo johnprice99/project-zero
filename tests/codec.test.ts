@@ -10,7 +10,6 @@ test('saved boards roundtrip through JSON with their schema number', () => {
   board.columns.splice(2, 0, { id: 'review', name: 'Review' });
   board.collapsedProjects = ['web'];
   board.projects[0].color = '#bb22cc';
-  board.tasks[0].checklist = [{ id: 'c1', title: 'Kept without editing controls', done: true }];
   const stored = roundtrip(encodeBoard(board));
   assert.equal(stored.schema, SCHEMA);
   assert.deepEqual(decodeBoard(stored), board);
@@ -95,12 +94,12 @@ test('boards from a newer version of the app are refused rather than misread', (
   assert.throws(() => decodeBoard({ ...doc, schema: undefined }), /schema is missing/);
 });
 
-test('restores accept saved documents, backup files, and prototype exports', () => {
+test('restores accept saved documents and backup files, and refuse other files', () => {
   const board = sampleBoard();
   const stored = roundtrip(encodeBoard(board));
   assert.deepEqual(decodeAnyBoard(stored), { board, upgraded: false });
   assert.deepEqual(decodeAnyBoard({ app: 'project-zero', revision: 4, savedAt: 1, board: stored }), { board, upgraded: false });
-  assert.deepEqual(decodeAnyBoard({ ...board, version: 6 }), { board, upgraded: true });
+  assert.throws(() => decodeAnyBoard({ ...board, version: 6 }), /schema is missing/);
 });
 
 test('read errors are explained in plain language', () => {
