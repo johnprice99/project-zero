@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Zero — a clear view of what's next</title>
+    <meta
+      name="description"
+      content="Project Zero is a free, small to-do board for Mac. See your work at a glance, choose today's tasks, and keep everything on your own Mac."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta property="og:title" content="Project Zero — a clear view of what's next" />
+    <meta property="og:description" content="A free, small to-do board for Mac that works like a paper list." />
+    <meta property="og:image" content="images/board-light.png" />
+    <link rel="icon" type="image/png" href="images/favicon.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <picture class="icon">
+        <img src="images/icon.png" width="128" height="128" alt="The Project Zero app icon" />
+      </picture>
+      <h1>Project Zero</h1>
+      <p class="tagline">A clear view of what's next.</p>
+      <p class="lede">
+        A small to-do board for your Mac that works like a paper list. See what's in progress at a glance, add tasks in a
+        moment, and put them in the order they matter.
+      </p>
+      <div class="download">
+        <!-- Points at the newest release's disk image (see README › Website). -->
+        <a class="button" href="https://github.com/johnprice99/project-zero/releases/latest/download/Project-Zero-mac-arm64.dmg">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" /></svg>
+          Download for Mac
+        </a>
+        <p class="fine">Free · Apple silicon (M1 or later) · macOS 11 or later</p>
+      </div>
+    </header>
+
+    <main>
+      <figure class="window hero-shot">
+        <picture>
+          <source srcset="images/board-dark.png" media="(prefers-color-scheme: dark)" />
+          <img src="images/board-light.png" width="2560" height="1600" alt="Project Zero showing projects as rows of To do, Doing and Done" />
+        </picture>
+      </figure>
+
+      <section class="features" aria-label="Features">
+        <article>
+          <h2>Everything at a glance</h2>
+          <p>
+            Each project is a row of To do, Doing and Done. Drag a card to change its status or its place: order is priority, so
+            what's at the top is what's next. Rename the columns or add your own.
+          </p>
+        </article>
+        <article>
+          <h2>Today, without the shuffle</h2>
+          <p>
+            Pick tasks from any project for today. They stay where they belong, Today keeps its own order, and anything unfinished
+            stays until you finish it or take it off.
+          </p>
+        </article>
+        <article>
+          <h2>Keyboard first</h2>
+          <p>
+            Every command is in the palette (⇧⌘P): add a task, move it, reorder it, mark it blocked, or jump to a project, all by
+            name. The commands you use most come first.
+          </p>
+        </article>
+        <article>
+          <h2>Blocked, not buried</h2>
+          <p>
+            Flag a task as blocked and it stands out where it is, with the reason in its description, until you clear the flag or
+            finish it.
+          </p>
+        </article>
+        <article>
+          <h2>Safe on your Mac</h2>
+          <p>
+            Every change is saved the moment you make it, and the file is never left half written. Project Zero keeps backups by
+            itself, and you can export your board or restore it at any time.
+          </p>
+        </article>
+        <article>
+          <h2>Private by design</h2>
+          <p>No account, no cloud and no tracking. Your board is one file on your own Mac, and the app works offline.</p>
+        </article>
+      </section>
+
+      <section class="gallery" aria-label="Screenshots">
+        <figure>
+          <div class="window">
+            <img src="images/today.png" width="2560" height="1600" loading="lazy" alt="The Today view with tasks from several projects" />
+          </div>
+          <figcaption>Today gathers the tasks you chose, from every project.</figcaption>
+        </figure>
+        <figure>
+          <div class="window">
+            <img src="images/palette.png" width="2560" height="1600" loading="lazy" alt="The command palette listing commands" />
+          </div>
+          <figcaption>Every command, one keystroke away.</figcaption>
+        </figure>
+        <figure>
+          <div class="window">
+            <img src="images/editor.png" width="2560" height="1600" loading="lazy" alt="Editing a task's title and description in dark mode" />
+          </div>
+          <figcaption>A title, a description, and a blocked flag. Nothing more.</figcaption>
+        </figure>
+        <figure>
+          <div class="window">
+            <img src="images/board-dark.png" width="2560" height="1600" loading="lazy" alt="Project Zero in dark mode" />
+          </div>
+          <figcaption>Light or dark, following your Mac.</figcaption>
+        </figure>
+      </section>
+
+      <section class="install" id="install">
+        <h2>Installing</h2>
+        <ol>
+          <li>Open the downloaded <strong>Project-Zero-mac-arm64.dmg</strong> and drag Project Zero into Applications.</li>
+          <li>
+            Project Zero is free and isn't registered with Apple, so the first time you open it macOS says it can't check it. Click
+            <strong>Done</strong>, then go to <strong>System Settings › Privacy &amp; Security</strong>, scroll down and click
+            <strong>Open Anyway</strong>.
+          </li>
+          <li>
+            From then on, Project Zero opens like any other app. It starts with a sample board to try; delete those projects
+            when you're ready to add your own.
+          </li>
+          <li>
+            Project Zero keeps itself up to date: when there's a new version it offers to install it and restart, with your board
+            saved first. You can also choose <strong>Project Zero › Check for Updates…</strong>.
+          </li>
+        </ol>
+      </section>
+    </main>
+
+    <footer>
+      <picture>
+        <img src="images/icon.png" width="28" height="28" alt="" />
+      </picture>
+      <p>Project Zero is free. Made by John Price.</p>
+    </footer>
+  </body>
+</html>

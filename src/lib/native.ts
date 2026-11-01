@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { createBrowserBackend } from './browser-storage.ts';
 import { emptyBoard, type Board } from './model.ts';
 import { sampleBoard } from './sample.ts';
@@ -31,14 +33,12 @@ export async function openBoard(store: BoardStore): Promise<Startup> {
 // The command palette is the only app-specific global shortcut.
 export async function bindNativeMenus(openPalette: () => void): Promise<() => void> {
   if (!isDesktop) return () => {};
-  const { listen } = await import('@tauri-apps/api/event');
   return listen('project-zero:command-palette', openPalette);
 }
 
 // Rust holds quitting and closing the window until pending saves finish (or a short timeout).
 export async function bindExitFlush(flush: () => Promise<void>): Promise<() => void> {
   if (!isDesktop) return () => {};
-  const [{ listen }, { invoke }] = await Promise.all([import('@tauri-apps/api/event'), import('@tauri-apps/api/core')]);
   return listen('project-zero:before-exit', async () => {
     try {
       await flush();
@@ -54,13 +54,11 @@ export const ISSUES = 'https://github.com/johnprice99/project-zero/issues/new';
 // Project Zero › About Project Zero shows the app's own About panel.
 export async function bindAbout(open: () => void): Promise<() => void> {
   if (!isDesktop) return () => {};
-  const { listen } = await import('@tauri-apps/api/event');
   return listen('project-zero:about', open);
 }
 
 // The desktop app shows its own native dialogs while checking and installing.
 export async function checkForUpdates(): Promise<void> {
-  const { invoke } = await import('@tauri-apps/api/core');
   await invoke('check_for_updates');
 }
 
@@ -69,6 +67,5 @@ export async function openLink(target: 'website' | 'issues'): Promise<void> {
     window.open(target === 'website' ? WEBSITE : ISSUES, '_blank', 'noopener');
     return;
   }
-  const { invoke } = await import('@tauri-apps/api/core');
   await invoke('open_link', { target });
 }

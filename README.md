@@ -9,7 +9,8 @@ Accepted on 31 October 2026:
 - **Project Zero** is the app name.
 - The name represents a clear head and nothing slipping through the cracks, alongside the satisfaction of completing work. An empty backlog is not an obligation.
 - **P0** is the starting direction for the app icon: a simple, compact monogram. A provisional vector monogram and generated desktop icons are included.
-- Suggested supporting line, not yet final: “A clear view of what's next.”
+- Supporting line: “A clear view of what's next.” (used in About and on the website).
+- Bundle identifier `com.johnprice.projectzero`, following Typr's `com.johnprice.typr`. Do not change it: it decides where the board is stored.
 
 ## Technology decision
 
@@ -120,6 +121,43 @@ The browser preview keeps its board in localStorage instead, with the same revis
 
 Collapsed projects are part of the board, so they are backed up and restored with it. Theme, sidebar width, and recently used commands are device preferences kept in webview storage. They are not part of the board, exports, or backups.
 
+## About, updates, and help
+
+These follow Typr.
+
+- **About.** Project Zero › About Project Zero (or the palette) shows a small panel with the icon, version, and supporting line. Escape, Close, or a click outside closes it.
+- **Check for Updates.** Project Zero › Check for Updates… asks GitHub for the newest release. If it's newer, it offers Install and Restart. The update is downloaded and installed only if it is signed with the developer's key; pending saves finish, then the app restarts into the new version. If the app can't replace itself (running from the disk image, or not in a writable folder), it offers the download in the browser instead. Installed copies also check quietly about once a day, ten seconds after opening, and say nothing unless there is an update.
+- **Help.** Help › Project Zero Website and Report a Problem open the website and a new GitHub issue. Help also searches the menus.
+
+## Releasing (the owner publishes)
+
+1. Set the same new `version` in `package.json` and `src-tauri/Cargo.toml`, then run `npm run dist`. It builds into `release/`:
+   - `Project-Zero-mac-arm64.dmg`: the download the website links to.
+   - `Project-Zero-mac-arm64.app.tar.gz` and its `.sig`: the signed update installed copies download.
+   - `latest.json`: tells installed copies the newest version and where it is.
+2. On GitHub, **Releases › Draft a new release**: a new tag equal to the version (e.g. `1.0.0`, no “v”), a title, and attach **all four** files. Publish it as the latest release.
+
+The names are fixed, so the website's download link and the update address (`releases/latest/download/latest.json`) keep working from one version to the next.
+
+**The signing key** is `~/.config/project-zero/update-key`, made once with `npm run update-key` and never committed. Back it up somewhere safe. Its public half is in `src-tauri/tauri.conf.json` (`plugins › updater › pubkey`). Without the key, `npm run dist` builds the disk image only and installed copies cannot update themselves to that release. If the key is lost or leaked, make a new one, replace the public key in `tauri.conf.json`, and release: copies with the old key can't verify it, so they need the new version downloaded from the website once.
+
+The app is ad-hoc signed and not notarised, so a downloaded copy shows Gatekeeper's warning once (see the website's install steps).
+
+## Website
+
+`docs/` is a single static page (no build step), in the same style as Typr's. To publish it with GitHub Pages: **Settings › Pages › Deploy from a branch › `main` / `docs`**. On a free GitHub plan, Pages and release downloads need the repository to be public. It will be at https://johnprice99.github.io/project-zero/.
+
+`npm run screenshots` retakes `docs/images/*.png` from the browser preview in WebKit (the engine the desktop app uses), with a made-up board in a throwaway browser profile. It never touches your own board. It also copies the app icon to the website.
+
+## Icon
+
+The P0 monogram is provisional. To replace it, from a 1024 × 1024 PNG:
+
+1. `npx tauri icon path/to/icon.png` regenerates `src-tauri/icons/`.
+2. Replace `src/assets/icon-light.png` and `src/assets/icon-dark.png` (the About panel; 256 × 256 is enough). Use the same image twice if there is no dark variant.
+3. Replace `public/favicon.svg` (the browser preview's tab icon), or remove it and point `index.html` at a PNG.
+4. `npm run screenshots` to update the website's icon and screenshots.
+
 ## Changing the theme
 
 `src/theme.css` is the theme API. Palette values exist once per appearance; all other styles use semantic variables. For example:
@@ -160,7 +198,11 @@ Cmd+Shift+P is the only app-specific shortcut. The native Mac menu forwards it t
 - `src/lib/codec.ts`: the board file format, validation, and future migrations.
 - `src/lib/prototype.ts`: frozen importer for boards saved by the browser prototype.
 - `src-tauri/src/storage.rs`: the board file, revisions, backups, restore, export, and import.
-- `src-tauri/src/main.rs`: native menu, storage commands, single instance, and saving before quit.
+- `src-tauri/src/main.rs`: native menu, storage commands, single instance, and saving before quit or restart.
+- `src-tauri/src/updates.rs`: Check for Updates and the quiet daily check.
+- `src/components/AboutPanel.svelte`: the About panel.
+- `scripts/release.mjs`: builds a release (`npm run dist`). `scripts/screenshots.mjs`: the website's screenshots.
+- `docs/`: the website.
 - `src/components/Settings.svelte`: appearance and column management.
 - `src/components/TaskPalette.svelte`: the command palette and its name prompt.
 - `src/components/NewTaskDialog.svelte`: focused task creation.
@@ -168,7 +210,7 @@ Cmd+Shift+P is the only app-specific shortcut. The native Mac menu forwards it t
 - `src/lib/command-registry.ts`: available app commands and task/project choices.
 - `src/components/ProjectDialog.svelte`: project creation and name/colour editing.
 - `src/components/ConfirmDialog.svelte`: confirmation before task deletion and clearing Today.
-- `src/lib/native.ts`: chooses desktop or browser storage; native menu and quit events.
+- `src/lib/native.ts`: chooses desktop or browser storage; native menu, About, links, updates, and quit events.
 - `src/lib/theme.ts`: appearance preference and system resolution.
 - `src/components/Board.svelte`: project swimlanes and drag targets.
 - `src/components/TaskCard.svelte`: compact card controls.
