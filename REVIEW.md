@@ -84,14 +84,19 @@ Accepted as they are:
 
 ## Not changed
 
-- Completed tasks still accumulate until cleared. An archive is a product decision.
 - Collapsed projects stay in the board (saved, exported, and restored with it); device preferences stay in webview storage.
-- No code signing, notarisation, or DMG target; not needed for personal use.
+- No notarisation or DMG; not needed for personal use. The bundle is ad-hoc signed, as Typr is.
 - The native menu gains About and a Window menu, and Quit is now a custom item so it can wait for saves. The blocked-storage message now says “saved board” instead of “saved draft”.
-- The board footer still reads “Prototype · saved on this device”, left as-is to keep the UI unchanged.
 
 ## Validation
 
 - Unit tests: TypeScript (task rules, board format and prototype imports, save queue ordering/combining/failure/conflict, palette matching) and Rust (save/reload, revision conflicts, unreadable boards, backups, pruning, backup-id path safety, export validation).
 - `npm run check` (Svelte/TypeScript, Prettier, unit tests), `cargo clippy -D warnings`, and a release bundle build.
 - Outside the palette, the rendered markup and CSS are unchanged. Edits there are limited to script blocks, event-handler expressions, and `maxlength` values now read from `limits` (same numbers).
+
+## Follow-up (owner decisions)
+
+- Completed tasks are not archived. Clear all completed tasks (palette) permanently deletes every completed task across all projects after confirmation; Clear completed tasks in this view remains for a single project or Today when it would clear less.
+- The “Prototype · saved on this device” footer was removed.
+- The whole bundle is now ad-hoc signed under `com.johnprice.projectzero`. Previously only the executable was signed by the linker, so `codesign --verify` failed on the app.
+

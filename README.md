@@ -25,7 +25,7 @@ This balances a small installed application with code the owner can understand a
 
 The finished app must run without Xcode, Node.js, Rust, a development server, an account, or an internet connection. Building the Mac app requires Node.js, Rust, and Apple's Xcode Command Line Tools; the full Xcode application is not required for the desktop target.
 
-Measure installed release size and installer size separately. No size target has been established yet.
+Measure installed release size and installer size separately. No size target has been established. On 1 November 2026 the installed app was 4.3 MB and a zipped copy 1.4 MB (for comparison, Typr is 243 MB because it bundles Chromium; Tauri uses the WebKit already in macOS).
 
 ## Agreed workflow
 
@@ -48,7 +48,7 @@ Measure installed release size and installer size separately. No size target has
 - Opening the command palette asks before discarding an unsaved form. Closing a form explicitly still discards its draft.
 - There is no task search or permanent task-entry field on the board.
 - Click anywhere in a project heading row to collapse or expand its swimlane, or use Collapse all / Expand all in the palette. These choices are saved and restored.
-- Delete cards individually or clear the completed column in the current project/view. Deletion and clearing completed tasks require confirmation. Deletion is permanent after confirmation; there is no recovery list or Undo toast.
+- Delete cards individually, clear all completed tasks across every project, or clear the completed tasks in the current project/view. There is no archive. Deletion and clearing completed tasks require confirmation. Deletion is permanent after confirmation; there is no recovery list or Undo toast.
 - Remove custom columns in Settings by choosing a destination for their tasks in a second modal stacked above Settings. To do, Doing/In progress, and Done are protected even after renaming. Core columns removed by an earlier draft are restored without losing task data.
 - Blocked cards use themeable warning colours and a stronger warning border on hover. Their controls keep the same position as other cards.
 - Task editing contains the title, description, and blocked flag. Save applies the edits and closes the modal; the close button or Escape discard unsaved edits. Delete is separated from the primary Save action and requires confirmation. Existing checklist data is retained in saved drafts but has no editing controls.
@@ -92,6 +92,15 @@ cd src-tauri && cargo test   # storage, backup, and restore tests
 ```
 
 `npm run tauri dev` runs the desktop app; `npm run tauri build` builds it. Both also require Rust and Xcode Command Line Tools. The release bundle is at `src-tauri/target/release/bundle/macos/Project Zero.app`.
+
+To install, quit any running copy, then replace it:
+
+```sh
+npm run tauri build
+rm -rf "/Applications/Project Zero.app" && ditto "src-tauri/target/release/bundle/macos/Project Zero.app" "/Applications/Project Zero.app"
+```
+
+The app is ad-hoc signed (no Apple developer account) and not notarised. That is fine for a copy you build yourself; a copy downloaded from elsewhere would show Gatekeeper's warning once. It requires an Apple silicon Mac with macOS 11 or later.
 
 Tests are unit tests for the parts where a bug could lose work: task and ordering rules, the board format and imports, the save queue, and the Rust storage. There are no browser or end-to-end tests.
 

@@ -108,3 +108,17 @@ test('a one-project board has no unusable task-to-project command branches', () 
   }
   check(commands);
 });
+
+test('clear all completed tasks is always offered, and the view-only version only when it clears less', () => {
+  const { actions, calls, commands } = registry();
+  const ids = (items: Command[]) => items.map(c => c.id).filter(id => id.startsWith('clear-'));
+  // Sample completed tasks are in Project Zero and Documents & planning.
+  assert.deepEqual(ids(commands), ['clear-today', 'clear-all-done']);
+  assert.deepEqual(ids(buildCommands(sampleBoard(), 'all', 'zero', actions)), ['clear-today', 'clear-all-done', 'clear-done']);
+  assert.deepEqual(ids(buildCommands(sampleBoard(), 'all', 'web', actions)), ['clear-today', 'clear-all-done']);
+  const none = sampleBoard();
+  none.tasks = none.tasks.filter(t => t.status !== 'done');
+  assert.deepEqual(ids(buildCommands(none, 'all', null, actions)), ['clear-today']);
+  filterCommands(commands, 'clear all completed')[0].run!();
+  assert.deepEqual(calls.at(-1), { action: 'clearAllDone', args: [] });
+});

@@ -217,7 +217,7 @@
     toggleToday: (id) => void commit(b => toggleToday(b, id)),
     toggleBlocked: (id) => void commit(b => { const task = b.tasks.find(t => t.id === id); return task ? patchTask(b, id, { blocked: !task.blocked }) : b; }),
     deleteTask: (id) => askDelete([id]),
-    clearDone, clearToday: askClearToday,
+    clearDone, clearAllDone: askClearAllCompleted, clearToday: askClearToday,
     addColumn: () => promptForColumn(null), renameColumn: promptForColumn,
     removeColumn: requestColumnRemoval, export: () => void exportTasks(),
     restoreFile: () => void askRestore(() => store.importFile(), 'this file'),
@@ -248,6 +248,12 @@
     confirmation = { title: ids.length === 1 ? 'Delete task?' : 'Clear completed tasks?', message: ids.length === 1 ? `Permanently delete “${board.tasks.find(t => t.id === ids[0])?.title}”? This cannot be undone.` : `Permanently delete these ${ids.length} completed tasks from this view? This cannot be undone.`, action: ids.length === 1 ? 'Delete task' : 'Clear completed tasks', run: async () => { if (!(await commit(b => deleteTasks(b, ids), { afterSave: true }))) return; if (ids.includes(selectedId ?? '')) closeTask(); } };
   }
   function clearDone() { askDelete(board.tasks.filter(t => t.status === board.completedColumnId && (!projectId || t.projectId === projectId) && (view !== 'today' || t.today)).map(t => t.id)); }
+  function askClearAllCompleted() {
+    const ids = board.tasks.filter(t => t.status === board.completedColumnId).map(t => t.id);
+    if (storageBlocked || !ids.length) return;
+    const tasks = ids.length === 1 ? 'the 1 completed task' : `all ${ids.length} completed tasks`;
+    confirmation = { title: 'Clear all completed tasks?', message: `Permanently delete ${tasks} across every project? This cannot be undone.`, action: 'Clear completed tasks', run: () => void commit(b => deleteTasks(b, ids), { afterSave: true }) };
+  }
   function askClearToday() {
     const count = board.tasks.filter(t => t.today).length;
     if (!count || storageBlocked) return;
@@ -282,7 +288,6 @@
     {#if nativeError}<div class="save-error" role="alert">{nativeError}</div>{/if}
     {#if !storageBlocked}<BoardView {board} {view} {projectId} onopen={openTask} ontoday={(id) => void commit(b => toggleToday(b, id))} ondelete={(id) => askDelete([id])} oncollapse={(ids) => void commit(b => setCollapsed(b, ids))} onmove={move}/>{/if}
 
-    <span class="prototype-note">{storageBlocked ? 'Saved board unavailable' : 'Prototype · saved on this device'}</span>
   </main>
 </div>
 {#if settingsOpen}

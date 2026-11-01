@@ -21,6 +21,7 @@ export interface CommandActions {
   toggleBlocked(id: string): void;
   deleteTask(id: string): void;
   clearDone(): void;
+  clearAllDone(): void;
   clearToday(): void;
   addColumn(): void;
   renameColumn(id: string): void;
@@ -237,11 +238,13 @@ export function buildCommands(
   ];
   if (board.tasks.some(t => t.today))
     roots.push({ id: 'clear-today', label: "Clear today's work", group: 'Cleanup', run: a.clearToday });
-  if (
-    board.tasks.some(
-      t => t.status === board.completedColumnId && (!projectId || t.projectId === projectId) && (view !== 'today' || t.today),
-    )
-  )
+  // Completed tasks are deleted outright (after confirmation); there is no archive.
+  const completed = board.tasks.filter(t => t.status === board.completedColumnId);
+  const inView = completed.filter(t => (!projectId || t.projectId === projectId) && (view !== 'today' || t.today));
+  if (completed.length)
+    roots.push({ id: 'clear-all-done', label: 'Clear all completed tasks', group: 'Cleanup', run: a.clearAllDone });
+  // Only offered when it would clear fewer than “Clear all” does.
+  if (inView.length && inView.length < completed.length)
     roots.push({ id: 'clear-done', label: 'Clear completed tasks in this view', group: 'Cleanup', run: a.clearDone });
   // A one-project board has no destination for “Move task to project”.
   // Remove empty branches recursively so neither browsing nor search offers dead ends.
