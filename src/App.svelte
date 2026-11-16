@@ -14,7 +14,7 @@
   import { rememberRecent } from './lib/commands';
   import { buildCommands } from './lib/command-registry';
   import TaskPalette from './components/TaskPalette.svelte';
-  import { addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, setCollapsed, moveTask, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
+  import { addTask, deleteProject, addColumn, renameColumn, removeColumn, deleteTasks, clearToday, saveProject, projectColor, setCollapsed, moveTask, moveProject, patchTask, toggleToday, type TaskPatch, type Board, type Project, type Status, type View, type Task } from './lib/model';
   import { readableError } from './lib/codec';
   import { ConflictError } from './lib/storage';
   import { createCommitter } from './lib/commit';
@@ -185,6 +185,36 @@
       if (ok) closePanel('project'); else if (viewing) openProject(id);
     } };
   }
+  // Projects are reordered by dragging them in the sidebar. The whole list is the drop
+  // target, so the gaps between projects count: the drop goes before the first project
+  // whose middle is below the pointer.
+  let draggingProject = $state<string | null>(null);
+  let projectDrop = $state<{ before?: string } | null>(null);
+  function startProjectDrag(e: DragEvent, id: string) {
+    draggingProject = id;
+    if (e.dataTransfer) { e.dataTransfer.setData('text/plain', id); e.dataTransfer.effectAllowed = 'move'; }
+  }
+  function endProjectDrag() { draggingProject = null; projectDrop = null; }
+  function projectDragOver(e: DragEvent) {
+    if (!draggingProject) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const links = [...(e.currentTarget as HTMLElement).querySelectorAll('.project-link')];
+    const index = links.findIndex(link => { const rect = link.getBoundingClientRect(); return e.clientY < rect.top + rect.height / 2; });
+    const before = index < 0 ? undefined : board.projects[index]?.id;
+    const from = board.projects.findIndex(p => p.id === draggingProject);
+    // No line where the drop would leave the project where it is.
+    projectDrop = before === draggingProject || before === board.projects[from + 1]?.id ? null : { before };
+  }
+  function projectDragLeave(e: DragEvent) {
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) projectDrop = null;
+  }
+  function dropProject(e: DragEvent) {
+    e.preventDefault();
+    const id = draggingProject, drop = projectDrop;
+    endProjectDrag();
+    if (id && drop) void commit(b => moveProject(b, id, drop.before));
+  }
   function startSidebarResize(e: PointerEvent) {
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
@@ -229,8 +259,8 @@
       <button aria-label="Today" class:active={view === 'today'} aria-current={view === 'today' ? 'page' : undefined} onclick={() => switchView('today')}><Icon name="sun" size={16}/><span>Today</span></button>
     </nav>
     <div class="projects-header"><span>Projects</span>{#if !storageBlocked}<button class="icon-button projects-add" aria-label="New project" title="New project" onclick={newProject}><Icon name="plus" size={14}/></button>{/if}</div>
-    <nav class="project-nav" aria-label="Projects">
-      {#each board.projects as project}<button class="project-link" class:active={projectId === project.id} aria-current={projectId === project.id ? 'page' : undefined} onclick={() => openProject(project.id)}><span class="project-dot" style={`background: ${projectColor(project.color)}`}></span><span class="project-name">{project.name}</span></button>{/each}
+    <nav class="project-nav" aria-label="Projects" ondragover={projectDragOver} ondragleave={projectDragLeave} ondrop={dropProject}>
+      {#each board.projects as project, i (project.id)}<button class="project-link" class:active={projectId === project.id} class:being-dragged={draggingProject === project.id} class:drop-before={projectDrop?.before === project.id} class:drop-after={projectDrop && !projectDrop.before && i === board.projects.length - 1} aria-current={projectId === project.id ? 'page' : undefined} draggable={!storageBlocked} ondragstart={(e) => startProjectDrag(e, project.id)} ondragend={endProjectDrag} onclick={() => openProject(project.id)}><span class="project-dot" style={`background: ${projectColor(project.color)}`}></span><span class="project-name">{project.name}</span></button>{/each}
     </nav>
   </aside>
   <!-- A focusable ARIA window splitter supports pointer resizing and arrow/Home/End keys. -->

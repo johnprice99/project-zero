@@ -14,6 +14,7 @@ import {
   renameColumn,
   lane,
   moveTask,
+  moveProject,
   toggleToday,
   patchTask,
 } from '../src/lib/model.ts';
@@ -272,4 +273,19 @@ test('mixed drag and Today operations preserve task data and unique priority pos
     }
     assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(encodeBoard(board)))), board);
   }
+});
+test('reordering projects keeps every project and its tasks, and survives a save', () => {
+  const board = sampleBoard();
+  const ids = (b: typeof board) => b.projects.map(p => p.id);
+  const up = moveProject(board, 'docs', 'zero');
+  assert.deepEqual(ids(up), ['docs', 'zero', 'web', 'general']);
+  assert.deepEqual(ids(moveProject(board, 'zero')), ['web', 'docs', 'general', 'zero']);
+  assert.deepEqual(ids(moveProject(board, 'zero', 'docs')), ['web', 'zero', 'docs', 'general']);
+  assert.equal(up.tasks, board.tasks);
+  assert.deepEqual(decodeBoard(JSON.parse(JSON.stringify(encodeBoard(up)))), up);
+  assert.equal(moveProject(board, 'zero', 'zero'), board);
+  assert.equal(moveProject(board, 'zero', 'web'), board);
+  assert.equal(moveProject(board, 'general'), board);
+  assert.equal(moveProject(board, 'missing', 'zero'), board);
+  assert.equal(moveProject(board, 'zero', 'missing'), board);
 });

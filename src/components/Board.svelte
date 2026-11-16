@@ -29,7 +29,7 @@
     <div class="column-headings">
       {#each board.columns as column (column.id)}<div class="column-heading"><h2>{column.name}</h2></div>{/each}
     </div>
-    {#each groups as group}
+    {#each groups as group (group.id)}
       <section class="swimlane" class:lane-collapsed={!projectId && collapsed.includes(group.id)} aria-label={view === 'all' ? group.name : 'Today board'}>
         {#if view === 'all' && !projectId}
           <button class="lane-heading" style={`--project-color: ${projectColor(group.color)}`} aria-expanded={!collapsed.includes(group.id)} onclick={() => oncollapse(collapsed.includes(group.id) ? collapsed.filter(id => id !== group.id) : [...collapsed, group.id])}>

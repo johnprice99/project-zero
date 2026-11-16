@@ -214,6 +214,17 @@ export function saveProject(board: Board, id: string | null, name: string, color
   };
 }
 
+// The projects' order is the sidebar's and All work's. With no beforeId, the project goes last.
+export function moveProject(board: Board, id: string, beforeId?: string): Board {
+  const project = board.projects.find(p => p.id === id);
+  if (!project || beforeId === id || (beforeId && !board.projects.some(p => p.id === beforeId))) return board;
+  const projects = board.projects.filter(p => p.id !== id);
+  const index = beforeId ? projects.findIndex(p => p.id === beforeId) : projects.length;
+  projects.splice(index, 0, project);
+  if (projects.every((p, i) => p === board.projects[i])) return board;
+  return { ...board, projects };
+}
+
 export function deleteProject(board: Board, id: string): Board {
   if (!board.projects.some(p => p.id === id)) return board;
   return {

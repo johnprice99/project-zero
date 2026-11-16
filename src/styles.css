@@ -125,7 +125,11 @@ textarea.notes-input { resize: vertical; }
 .sidebar-resizer { position: sticky; top: 0; width: 6px; height: 100vh; margin-left: -3px; margin-right: -3px; flex-shrink: 0; z-index: 2; cursor: col-resize; touch-action: none; }
 .sidebar-resizer::after { content: ''; position: absolute; left: 2px; top: 0; bottom: 0; width: 2px; background: transparent; }
 .sidebar-resizer:hover::after, .sidebar-resizer:focus-visible::after { background: var(--accent); }
-.project-nav .project-link { width: 100%; }
+.project-nav .project-link { width: 100%; position: relative; }
+.project-link.drop-before::before, .project-link.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); pointer-events: none; }
+.project-link.drop-before::before { top: -4px; }
+.project-link.drop-after::after { bottom: -4px; }
+.project-link.being-dragged { opacity: .35; }
 .swimlane.lane-collapsed { padding-bottom: 0; }
 .lane-columns { padding-top: 16px; }
 .lane-heading + .lane-columns { padding-top: 0; }
